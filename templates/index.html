@@ -1,0 +1,1105 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="obsidian">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GlycoGuide Remastered — Type 1 Diabetes Assistant</title>
+  <link rel="icon" type="image/svg+xml" href="/static/img/logo.svg">
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+
+  <!-- Floating Update Notification Card -->
+  <div id="systemUpdateFloatingCard" class="update-banner" style="display: none; position: fixed; top: 1.5rem; left: 50%; transform: translateX(-50%); z-index: 999; max-width: 600px; width: 90%;">
+    <div>
+      <strong style="color: var(--accent-primary);">System Update Available</strong>
+      <div id="updateBannerMessage" style="font-size: 0.82rem; color: var(--text-secondary);">A new version was detected on GitHub.</div>
+    </div>
+    <div style="display: flex; gap: 0.5rem;">
+      <button id="btnApplyUpdate" class="btn btn-primary btn-sm" onclick="app.applySystemUpdate()">Update Now</button>
+      <button class="btn btn-secondary btn-sm" onclick="document.getElementById('systemUpdateFloatingCard').style.display='none'">&times;</button>
+    </div>
+  </div>
+
+  <div class="app-container">
+
+    <!-- Top Header -->
+    <header class="app-header">
+      <div class="brand-box">
+        <img src="/static/img/logo.svg" alt="GlycoGuide" class="brand-logo">
+        <div class="brand-text">
+          <h1>GlycoGuide <span style="font-size: 0.65rem; background: var(--accent-gradient); -webkit-background-clip: text; -webkit-text-fill-color: transparent; font-weight: 800;">REMASTERED</span></h1>
+          <span>T1D Assistant &bull; Local Host</span>
+        </div>
+      </div>
+
+      <!-- Navigation Tabs (Re-ordered: History closer to Dashboard!) -->
+      <nav class="nav-tabs">
+        <button id="navTab-dashboard" class="nav-tab active" data-tab="dashboard">
+          <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 3v18h18M9 9l3 3 5-5M9 15l3 3 5-5"/></svg>
+          Dashboard
+        </button>
+        <button id="navTab-history" class="nav-tab" data-tab="history">
+          <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+          History & Reports
+        </button>
+        <button id="navTab-meal" class="nav-tab" data-tab="meal">
+          <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+          Bolus & Meal
+        </button>
+        <button id="navTab-settings" class="nav-tab" data-tab="settings">
+          <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          Settings
+        </button>
+      </nav>
+
+      <!-- Status Controls -->
+      <div class="header-controls">
+        <span class="pill"><span class="dot" style="color: #10b981;"></span> Port 8081</span>
+        <button id="unitTogglePill" class="pill pill-clickable" title="Click to switch between mg/dL and mmol/L">
+          Unit: <b class="unit-display-pill" style="color: var(--accent-primary);">mg/dL</b> &harr;
+        </button>
+        
+        <!-- Estimated HbA1c Pill -->
+        <span id="headerEa1cPill" class="pill" title="Estimated Glycated Haemoglobin (ADAG clinical equation)">
+          <span class="dot" style="color: var(--accent-primary);"></span> eA1c: <b id="headerEa1cValue">--</b>
+        </span>
+
+        <!-- Sign Out Button -->
+        <button class="btn btn-secondary btn-sm" onclick="app.signOut()" title="Sign out and lock device session">
+          <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>
+          Sign Out
+        </button>
+      </div>
+    </header>
+
+    <!-- TAB 1: DASHBOARD -->
+    <main id="tabView-dashboard" class="tab-view">
+      
+      <!-- Hypo Alert Banner with Live Countdown Timer Button -->
+      <div id="hypoRescueBanner" class="card" style="display: none; background: var(--color-hypo-bg); border-color: rgba(239, 68, 68, 0.5); margin-bottom: 1.5rem; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+        <div>
+          <strong style="color: var(--color-hypo); font-size: 1.15rem;">HYPOGLYCEMIA WARNING</strong>
+          <div style="font-size: 0.88rem; color: var(--text-secondary);">Blood glucose is below 70 mg/dL. Treat immediately with 15g fast-acting carbohydrates.</div>
+        </div>
+        <button id="bannerHypoTimerBtn" class="btn btn-danger btn-lg" onclick="app.openHypoRescue()" title="Click to open Hypo Rescue Protocol">
+          <span id="bannerHypoTimeText">15:00</span> &bull; Treat Hypo &rarr;
+        </button>
+      </div>
+
+      <!-- Ketone Warning Banner (Active when BG > 250) -->
+      <div id="ketoneAlertCard" class="card" style="display: none; background: var(--color-severe-bg); border-color: rgba(236, 72, 153, 0.5); margin-bottom: 1.5rem;">
+        <strong style="color: var(--color-severe);">HIGH BLOOD GLUCOSE (&gt; 250 mg/dL)</strong>
+        <p style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 0.25rem;">
+          Ketone check recommended. Ensure proper hydration and administer correction bolus with caution to avoid insulin stacking.
+        </p>
+      </div>
+
+      <!-- Top Metric Cards Grid -->
+      <div class="grid-cols-2" style="margin-bottom: 1.5rem;">
+        
+        <!-- Blood Glucose Readout Hero -->
+        <div class="card card-elevated bg-readout-card">
+          <div class="bg-readout-header">
+            <div>
+              <span class="pill">Current Blood Glucose</span>
+              <div id="heroBgTime" style="font-size: 0.78rem; color: var(--text-muted); margin-top: 0.4rem;">Awaiting log...</div>
+            </div>
+            <span id="heroBgStatus" class="bg-status-badge status-target">Normal</span>
+          </div>
+
+          <div class="bg-readout-body">
+            <span id="heroBgValue" class="bg-value-huge">--</span>
+            <span class="bg-unit-label dynamic-unit-label">mg/dL</span>
+          </div>
+
+          <div>
+            <button class="btn btn-primary" onclick="app.openModal('logBgModal')">
+              <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+              Log Glucose
+            </button>
+          </div>
+        </div>
+
+        <!-- Real-Time IOB Card -->
+        <div class="card card-elevated">
+          <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1rem;">
+            <div>
+              <span class="pill">Insulin on Board (IOB)</span>
+              <div id="iobSubtext" style="font-size: 0.78rem; color: var(--text-muted); margin-top: 0.4rem;">Rapid-Acting Pharmacokinetics</div>
+            </div>
+            <span class="pill" style="color: var(--accent-primary);">Active Decay</span>
+          </div>
+
+          <div class="iob-ring-box">
+            <div>
+              <div id="iobValue" class="iob-value-large" style="color: var(--accent-primary);">0.00</div>
+              <div style="font-size: 0.88rem; color: var(--text-muted); font-weight: 600; margin-top: 0.2rem;">Units Active</div>
+            </div>
+
+            <!-- SVG Circular Gauge -->
+            <svg width="100" height="100" viewBox="0 0 100 100">
+              <circle cx="50" cy="50" r="42" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="7"/>
+              <circle id="iobRingCircle" cx="50" cy="50" r="42" fill="none" stroke="var(--accent-primary)" stroke-width="7"
+                      stroke-dasharray="264" stroke-dashoffset="264" stroke-linecap="round"
+                      transform="rotate(-90 50 50)" style="transition: stroke-dashoffset 0.8s ease;"/>
+            </svg>
+          </div>
+
+          <div style="margin-top: 1.5rem; display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--border-subtle); padding-top: 0.85rem;">
+            <span style="font-size: 0.82rem; color: var(--text-secondary);">Stacking Protection: <b>Active</b></span>
+            <button class="btn btn-secondary btn-sm" onclick="app.openModal('logInsulinModal')">Log Bolus</button>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Live Glucose Trend Chart -->
+      <div class="card card-elevated" style="margin-bottom: 1.5rem;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; gap: 0.5rem;">
+          <div>
+            <h2 style="font-size: 1.15rem; font-weight: 700;">Glucose Trend & Target Band</h2>
+            <div style="font-size: 0.8rem; color: var(--text-muted);">Green shading indicates optimal target zone (70 &ndash; 180 <span class="dynamic-unit-label">mg/dL</span>)</div>
+          </div>
+          <!-- Range buttons with active class highlighting -->
+          <div style="display: flex; gap: 0.5rem;">
+            <button class="btn-range active" data-dash-range="1" onclick="app.setDashboardRange(1)">24h</button>
+            <button class="btn-range" data-dash-range="7" onclick="app.setDashboardRange(7)">7d</button>
+            <button class="btn-range" data-dash-range="14" onclick="app.setDashboardRange(14)">14d</button>
+          </div>
+        </div>
+
+        <div class="chart-container">
+          <canvas id="bgTrendChart"></canvas>
+        </div>
+      </div>
+
+      <!-- Analytics & TIR Summary Bar -->
+      <div class="grid-cols-3">
+        
+        <!-- TIR Card -->
+        <div class="card">
+          <div style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted); margin-bottom: 0.5rem;">TIME IN RANGE (TIR)</div>
+          <div style="display: flex; align-items: baseline; gap: 0.5rem; margin-bottom: 0.85rem;">
+            <span id="tirInRangePctText" style="font-size: 2.2rem; font-weight: 800; color: var(--color-target);">0%</span>
+            <span style="font-size: 0.85rem; color: var(--text-muted);">Target: &gt;70%</span>
+          </div>
+
+          <!-- Multi-segment progress bar -->
+          <div style="height: 10px; width: 100%; background: rgba(255,255,255,0.06); border-radius: var(--radius-full); overflow: hidden; display: flex;">
+            <div id="tirBarLow" style="height: 100%; width: 0%; background: var(--color-hypo);" title="Low"></div>
+            <div id="tirBarInRange" style="height: 100%; width: 0%; background: var(--color-target);" title="In Range"></div>
+            <div id="tirBarHigh" style="height: 100%; width: 0%; background: var(--color-hyper);" title="High"></div>
+          </div>
+        </div>
+
+        <!-- Estimated HbA1c (ADAG) -->
+        <div class="card">
+          <div style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted); margin-bottom: 0.5rem;">ESTIMATED HbA1c (ADAG)</div>
+          <div id="statEa1c" style="font-size: 2.2rem; font-weight: 800; color: var(--accent-primary); line-height: 1.1; margin-bottom: 0.4rem;">--</div>
+          <div style="font-size: 0.8rem; color: var(--text-muted);">Calculated from observed average glucose</div>
+        </div>
+
+        <!-- Active Reminders -->
+        <div class="card">
+          <div style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted); margin-bottom: 0.5rem;">POST-MEAL REMINDERS</div>
+          <div id="remindersList">
+            <span style="color: var(--text-muted); font-size: 0.85rem;">Loading reminders...</span>
+          </div>
+        </div>
+
+      </div>
+
+    </main>
+
+    <!-- TAB 2: HISTORY & REPORTS (Moved right next to Dashboard!) -->
+    <main id="tabView-history" class="tab-view" style="display: none;">
+      
+      <!-- Key Statistics Bar -->
+      <div class="grid-cols-4" style="margin-bottom: 1.5rem;">
+        <div class="card">
+          <div style="font-size: 0.75rem; font-weight: 600; color: var(--text-muted);">AVERAGE GLUCOSE</div>
+          <div id="statMeanBg" style="font-size: 1.8rem; font-weight: 800; color: var(--text-primary); margin-top: 0.2rem;">--</div>
+        </div>
+        <div class="card">
+          <div style="font-size: 0.75rem; font-weight: 600; color: var(--text-muted);">GLYCEMIC VARIABILITY (CV)</div>
+          <div id="statCv" style="font-size: 1.8rem; font-weight: 800; color: var(--color-target); margin-top: 0.2rem;">--</div>
+          <div style="font-size: 0.75rem; color: var(--text-muted);">Clinical Goal: &lt; 36%</div>
+        </div>
+        <div class="card">
+          <div style="font-size: 0.75rem; font-weight: 600; color: var(--text-muted);">REPORTS EXPORT</div>
+          <div style="display: flex; gap: 0.5rem; margin-top: 0.6rem;">
+            <a href="/api/export/csv" class="btn btn-secondary btn-sm" download>CSV Export</a>
+            <a href="/report?days=14" target="_blank" class="btn btn-primary btn-sm">Doctor Report</a>
+          </div>
+        </div>
+        <div class="card">
+          <div style="font-size: 0.75rem; font-weight: 600; color: var(--text-muted);">RANGE FILTER</div>
+          <div style="display: flex; gap: 0.35rem; margin-top: 0.6rem;">
+            <button class="btn-range" data-hist-range="7" onclick="app.setHistoryRange(7)">7d</button>
+            <button class="btn-range active" data-hist-range="14" onclick="app.setHistoryRange(14)">14d</button>
+            <button class="btn-range" data-hist-range="30" onclick="app.setHistoryRange(30)">30d</button>
+            <button class="btn-range" data-hist-range="90" onclick="app.setHistoryRange(90)">90d</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Ratio Suggestions Card -->
+      <div class="card card-elevated" style="margin-bottom: 1.5rem;">
+        <h3 style="font-size: 1.05rem; font-weight: 700; margin-bottom: 0.5rem; color: var(--text-primary);">
+          Clinical Ratio Analysis & Auto-Suggestions
+        </h3>
+        <p style="font-size: 0.82rem; color: var(--text-muted); margin-bottom: 1rem;">
+          Analyzes 2-hour post-meal glucose spikes and correction-drop efficacy over your recorded history.
+        </p>
+        <div id="suggestionsList"></div>
+      </div>
+
+      <!-- Log Entries Table with Inline Edit & Delete -->
+      <div class="card card-elevated">
+        <h3 style="font-size: 1.05rem; font-weight: 700; margin-bottom: 1rem;">Recorded Blood Glucose & Insulin Logs</h3>
+        <div class="table-responsive">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Date & Time</th>
+                <th>Glucose (<span class="dynamic-unit-label">mg/dL</span>)</th>
+                <th>Insulin</th>
+                <th>Carbs</th>
+                <th>Description</th>
+                <th>Tags</th>
+                <th style="text-align: right;">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="logTableBody">
+              <tr><td colspan="7" style="text-align: center; color: var(--text-muted); padding: 2rem;">Loading logs...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </main>
+
+    <!-- TAB 3: BOLUS & MEAL CALCULATOR -->
+    <main id="tabView-meal" class="tab-view" style="display: none;">
+      
+      <div class="grid-cols-2">
+        
+        <!-- Interactive Bolus Calculator -->
+        <div class="card card-elevated">
+          <h2 style="font-size: 1.25rem; font-weight: 700; margin-bottom: 0.5rem;">Smart Bolus Calculator</h2>
+          <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 1.25rem;">
+            Adheres to clinical guidelines with automatic IOB subtraction and high-fat split bolus recommendations.
+          </p>
+
+          <div id="calcWarningBox" class="card" style="display: none; background: var(--color-hypo-bg); border-color: rgba(239,68,68,0.4); color: var(--color-hypo); margin-bottom: 1rem; font-size: 0.85rem;"></div>
+
+          <div class="grid-cols-2" style="margin-bottom: 1rem;">
+            <div class="form-group">
+              <label class="form-label">Current Blood Glucose (<span class="dynamic-unit-label">mg/dL</span>)</label>
+              <input id="calcBgInput" type="number" step="any" class="form-input" placeholder="e.g. 140">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Meal Carbs (grams)</label>
+              <input id="calcCarbsInput" type="number" step="any" class="form-input" placeholder="e.g. 45">
+            </div>
+          </div>
+
+          <div class="grid-cols-2" style="margin-bottom: 1rem;">
+            <div class="form-group">
+              <label class="form-label">Dietary Fat (g) &bull; For Split Bolus</label>
+              <input id="calcFatInput" type="number" step="any" class="form-input" placeholder="e.g. 15">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Sugar (g) &bull; Included in Carbs</label>
+              <input id="calcSugarInput" type="number" step="any" class="form-input" placeholder="e.g. 8">
+            </div>
+          </div>
+
+          <!-- Context Adjustment Tags -->
+          <div class="form-group">
+            <label class="form-label">Context Factors</label>
+            <div style="display: flex; gap: 0.85rem; flex-wrap: wrap;">
+              <label style="display: flex; align-items: center; gap: 0.35rem; font-size: 0.85rem; cursor: pointer;">
+                <input id="tagExercise" type="checkbox"> Exercise (-20%)
+              </label>
+              <label style="display: flex; align-items: center; gap: 0.35rem; font-size: 0.85rem; cursor: pointer;">
+                <input id="tagSick" type="checkbox"> Sickness (+20%)
+              </label>
+              <label style="display: flex; align-items: center; gap: 0.35rem; font-size: 0.85rem; cursor: pointer;">
+                <input id="tagStress" type="checkbox"> Stress (+10%)
+              </label>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Meal Description / Notes</label>
+            <input id="calcDescInput" type="text" class="form-input" placeholder="e.g. Oatmeal with berries">
+          </div>
+
+          <!-- Dose Recommendation Box -->
+          <div style="background: rgba(0,0,0,0.3); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 1.25rem; margin: 1.25rem 0;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <span style="font-size: 0.9rem; font-weight: 600; color: var(--text-muted);">RECOMMENDED DOSE</span>
+              <span id="calcRecommendedTotal" style="font-size: 2.2rem; font-weight: 800; color: var(--accent-primary);">0.0 U</span>
+            </div>
+            <div id="calcBreakdownBox" style="margin-top: 0.75rem; border-top: 1px solid var(--border-subtle); padding-top: 0.75rem;">
+              <span style="font-size: 0.82rem; color: var(--text-muted);">Enter carbs or glucose above to calculate recommended insulin dose.</span>
+            </div>
+          </div>
+
+          <button class="btn btn-primary btn-lg" style="width: 100%;" onclick="app.submitBolusLog()">
+            Log & Apply Dose &rarr;
+          </button>
+        </div>
+
+        <!-- AI Meal Nutrition Scanner -->
+        <div class="card card-elevated">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+            <h2 style="font-size: 1.25rem; font-weight: 700;">AI Meal Macro Scanner</h2>
+            <span class="pill" style="color: var(--accent-primary);">Gemini / Vision</span>
+          </div>
+          <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 1.25rem;">
+            Snap a photo of your plate or describe what you are eating to get an instant macronutrient estimate.
+          </p>
+
+          <div class="form-group">
+            <label class="form-label">Upload Plate Photo or Snap with Camera</label>
+            <input id="mealFileInput" type="file" accept="image/*" capture="environment" class="form-input" style="padding: 0.5rem;">
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Meal Description / State Weights if known</label>
+            <textarea id="mealDescInput" class="form-textarea" rows="3" placeholder="e.g. Grilled salmon with 1 cup brown rice and steamed broccoli"></textarea>
+          </div>
+
+          <button id="btnAnalyzeMeal" class="btn btn-secondary btn-lg" style="width: 100%; margin-bottom: 1.25rem;" onclick="app.analyzeMealImage()">
+            Analyze Meal with AI
+          </button>
+
+          <!-- Result Container -->
+          <div id="mealAnalysisResult" style="display: none;"></div>
+        </div>
+
+      </div>
+
+    </main>
+
+    <!-- TAB 4: SETTINGS HUB (Organized into Clean Sub-Menus!) -->
+    <main id="tabView-settings" class="tab-view" style="display: none;">
+      
+      <div class="card card-elevated" style="max-width: 860px; margin: 0 auto;">
+        
+        <!-- Settings Sub-Navigation -->
+        <div class="settings-subnav">
+          <button id="subTabBtn-clinical" class="settings-subtab active" onclick="app.switchSettingsSubTab('clinical')">
+            <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+            Clinical & Profile
+          </button>
+          <button id="subTabBtn-ai" class="settings-subtab" onclick="app.switchSettingsSubTab('ai')">
+            <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 2a10 10 0 1 0 10 10H12V2z"/><path d="M12 2a10 10 0 0 1 10 10"/></svg>
+            AI Meal Vision
+          </button>
+          <button id="subTabBtn-themes" class="settings-subtab" onclick="app.switchSettingsSubTab('themes')">
+            <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 2a7 7 0 0 0 0 14v6"/></svg>
+            Themes & Maintenance
+          </button>
+          <button id="subTabBtn-audit" class="settings-subtab" onclick="app.switchSettingsSubTab('audit')">
+            <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/></svg>
+            Activity Logs
+          </button>
+        </div>
+
+        <!-- SUB-TAB 1: CLINICAL & PROFILE -->
+        <div id="subView-clinical" class="settings-subview">
+          <form onsubmit="event.preventDefault(); saveClinicalSettings();">
+            <h3 style="font-size: 1.05rem; color: var(--accent-primary); border-bottom: 1px solid var(--border-subtle); padding-bottom: 0.4rem; margin-bottom: 1rem;">
+              1. Blood Glucose Targets & Measurement Units
+            </h3>
+
+            <div class="grid-cols-2">
+              <div class="form-group">
+                <label class="form-label">Glucose Measurement Unit</label>
+                <select id="setUnit" class="form-select">
+                  <option value="mg/dL">mg/dL (Standard)</option>
+                  <option value="mmol/L">mmol/L (International)</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Target Blood Glucose (<span class="dynamic-unit-label">mg/dL</span>)</label>
+                <input id="setTargetBg" type="number" class="form-input" required>
+              </div>
+            </div>
+
+            <div class="grid-cols-2">
+              <div class="form-group">
+                <label class="form-label">Target Range Low (<span class="dynamic-unit-label">mg/dL</span>)</label>
+                <input id="setTargetLow" type="number" class="form-input" required>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Target Range High (<span class="dynamic-unit-label">mg/dL</span>)</label>
+                <input id="setTargetHigh" type="number" class="form-input" required>
+              </div>
+            </div>
+
+            <h3 style="font-size: 1.05rem; color: var(--accent-primary); border-bottom: 1px solid var(--border-subtle); padding-bottom: 0.4rem; margin: 1.5rem 0 1rem 0;">
+              2. Insulin Ratios & Pharmacokinetics
+            </h3>
+
+            <div class="grid-cols-2">
+              <div class="form-group">
+                <label class="form-label">Insulin-to-Carb Ratio (ICR, g/U)</label>
+                <input id="setIcr" type="number" step="0.1" class="form-input" placeholder="">
+              </div>
+              <div class="form-group">
+                <label class="form-label">Insulin Sensitivity Factor (ISF, <span class="dynamic-unit-label">mg/dL</span>/U)</label>
+                <input id="setIsf" type="number" step="0.1" class="form-input" placeholder="">
+              </div>
+            </div>
+
+            <div class="grid-cols-2">
+              <div class="form-group">
+                <label class="form-label">Insulin Brand / Type</label>
+                <select id="setInsulinType" class="form-select">
+                  <option value="NovoRapid">NovoRapid / Novolog (Peak 75m)</option>
+                  <option value="Humalog">Humalog (Peak 75m)</option>
+                  <option value="Apidra">Apidra (Peak 75m)</option>
+                  <option value="Admelog">Admelog (Peak 75m)</option>
+                  <option value="Fiasp">Fiasp (Ultra-Fast Peak 55m)</option>
+                  <option value="Lyumjev">Lyumjev (Ultra-Fast Peak 55m)</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Duration of Insulin Action (DIA, hours)</label>
+                <input id="setDia" type="number" step="0.5" class="form-input" placeholder="e.g. 4.0">
+              </div>
+            </div>
+
+            <h3 style="font-size: 1.05rem; color: var(--accent-primary); border-bottom: 1px solid var(--border-subtle); padding-bottom: 0.4rem; margin: 1.5rem 0 1rem 0;">
+              3. Personal Patient Profile
+            </h3>
+
+            <div class="grid-cols-2">
+              <div class="form-group">
+                <label class="form-label">Username</label>
+                <input id="setDisplayName" type="text" class="form-input" placeholder="Username">
+              </div>
+              <div class="form-group">
+                <label class="form-label">Patient Birth Date</label>
+                <input id="setBirthDate" type="date" class="form-input" onchange="app.onBirthDateChange(this.value)">
+                <div id="calculatedAgeBox" style="margin-top: 0.5rem; padding: 0.6rem 0.85rem; background: rgba(14, 165, 233, 0.08); border: 1px solid var(--border-highlight); border-radius: var(--radius-sm); font-size: 0.84rem; display: flex; align-items: center; justify-content: space-between;">
+                  <span style="color: var(--text-secondary);">Calculated Age:</span>
+                  <span id="calculatedAgeDisplay" style="font-weight: 700; color: var(--accent-primary);">-- years old</span>
+                </div>
+              </div>
+            </div>
+
+            <button type="submit" class="btn btn-primary btn-lg" style="width: 100%; margin-top: 1rem;">
+              Save Clinical & Profile Settings
+            </button>
+          </form>
+        </div>
+
+        <!-- SUB-TAB 2: AI MEAL VISION -->
+        <div id="subView-ai" class="settings-subview" style="display: none;">
+          <form onsubmit="event.preventDefault(); saveAiSettings();">
+            <h3 style="font-size: 1.05rem; color: var(--accent-primary); border-bottom: 1px solid var(--border-subtle); padding-bottom: 0.4rem; margin-bottom: 1rem;">
+              AI Vision & Macro Estimator Setup
+            </h3>
+            <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 1.25rem;">
+              Select a pre-configured AI provider below or configure custom endpoints (OpenAI, Groq, Ollama, etc.).
+            </p>
+
+            <div class="form-group">
+              <label class="form-label">AI Provider Preset</label>
+              <select id="aiPresetSelect" class="form-select" onchange="app.onAiPresetChange(this.value)">
+                <option value="gemini">Google Gemini (Recommended — Free Tier & Native Multimodal)</option>
+                <option value="openai">OpenAI (GPT-4o Mini / GPT-4o)</option>
+                <option value="groq">Groq (Ultra-Fast Llama 3.2 Vision)</option>
+                <option value="openrouter">OpenRouter (Multi-Provider Aggregator)</option>
+                <option value="ollama">Ollama Local LLM (Llama 3.2 Vision / LLaVA)</option>
+                <option value="custom">Custom Endpoint (Self-Hosted / Other)</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">API Key</label>
+              <input id="setAiKey" type="password" class="form-input" placeholder="Paste your API key here...">
+            </div>
+
+            <div class="grid-cols-2">
+              <div class="form-group">
+                <label class="form-label">Model Identifier</label>
+                <select id="aiModelSelect" class="form-select" onchange="app.onAiModelChange(this.value)">
+                  <!-- Dynamically populated based on chosen provider -->
+                </select>
+                <div id="customModelGroup" style="display: none; margin-top: 0.5rem;">
+                  <input id="setAiModelCustom" type="text" class="form-input" placeholder="Enter custom model identifier (e.g. meta-llama/llama-3.2-11b-vision-instruct)">
+                </div>
+              </div>
+              <div class="form-group">
+                <label class="form-label">API Base URL</label>
+                <input id="setAiUrl" type="text" class="form-input" placeholder="https://generativelanguage.googleapis.com">
+              </div>
+            </div>
+
+            <button type="submit" class="btn btn-primary btn-lg" style="width: 100%; margin-top: 1rem;">
+              Save AI Configuration
+            </button>
+          </form>
+        </div>
+
+        <!-- SUB-TAB 3: THEMES & MAINTENANCE -->
+        <div id="subView-themes" class="settings-subview" style="display: none;">
+          <h3 style="font-size: 1.05rem; color: var(--accent-primary); border-bottom: 1px solid var(--border-subtle); padding-bottom: 0.4rem; margin-bottom: 1rem;">
+            Color Theme & Visual Appearance
+          </h3>
+          <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 0.85rem;">
+            Select a color theme. Click any preview card to switch instantly:
+          </p>
+
+          <!-- Interactive Theme Visual Previews -->
+          <div class="theme-grid">
+            <div class="theme-card active" data-theme-id="obsidian" onclick="app.selectTheme('obsidian')">
+              <div class="theme-swatch">
+                <span style="background: #080c14;"></span>
+                <span style="background: #0ea5e9;"></span>
+                <span style="background: #1e293b;"></span>
+              </div>
+              <div class="theme-title">Obsidian Slate</div>
+            </div>
+
+            <div class="theme-card" data-theme-id="emerald" onclick="app.selectTheme('emerald')">
+              <div class="theme-swatch">
+                <span style="background: #04120e;"></span>
+                <span style="background: #10b981;"></span>
+                <span style="background: #064e3b;"></span>
+              </div>
+              <div class="theme-title">Obsidian Emerald</div>
+            </div>
+
+            <div class="theme-card" data-theme-id="sunset" onclick="app.selectTheme('sunset')">
+              <div class="theme-swatch">
+                <span style="background: #12090c;"></span>
+                <span style="background: #f97316;"></span>
+                <span style="background: #881337;"></span>
+              </div>
+              <div class="theme-title">Midnight Sunset</div>
+            </div>
+
+            <div class="theme-card" data-theme-id="cyber" onclick="app.selectTheme('cyber')">
+              <div class="theme-swatch">
+                <span style="background: #080614;"></span>
+                <span style="background: #a855f7;"></span>
+                <span style="background: #ec4899;"></span>
+              </div>
+              <div class="theme-title">Cyber Synth</div>
+            </div>
+
+            <div class="theme-card" data-theme-id="polar" onclick="app.selectTheme('polar')">
+              <div class="theme-swatch">
+                <span style="background: #f1f5f9;"></span>
+                <span style="background: #0284c7;"></span>
+                <span style="background: #ffffff;"></span>
+              </div>
+              <div class="theme-title" style="color: #cbd5e1;">Polar Light</div>
+            </div>
+          </div>
+
+          <h3 style="font-size: 1.05rem; color: var(--accent-primary); border-bottom: 1px solid var(--border-subtle); padding-bottom: 0.4rem; margin: 1.75rem 0 1rem 0;">
+            GitHub System Updates
+          </h3>
+          <div class="form-group">
+            <label class="form-label">GitHub Repository URL</label>
+            <div style="display: flex; gap: 0.5rem;">
+              <input id="setGithubRepo" type="text" class="form-input" style="flex: 1;" placeholder="https://github.com/InfamousToken10729/Diabetes-Management-System-v2">
+              <button type="button" class="btn btn-secondary" onclick="app.checkForUpdates(true)">Check for Updates</button>
+            </div>
+          </div>
+
+          <!-- Master Password Security Section -->
+          <h3 style="font-size: 1.05rem; color: var(--accent-primary); border-bottom: 1px solid var(--border-subtle); padding-bottom: 0.4rem; margin: 1.75rem 0 1rem 0;">
+            Master Account Security
+          </h3>
+          <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 1rem;">
+            Protects your system from unauthorized changes. When set, any new browser device or after 15 minutes of inactivity will require this password.
+          </p>
+          <div style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
+            <button type="button" class="btn btn-secondary" onclick="app.openChangePasswordModal()">
+              <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 2a5 5 0 0 0-5 5v3H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2h-1V7a5 5 0 0 0-5-5zM9 7a3 3 0 0 1 6 0v3H9V7z"/></svg>
+              Change Master Password
+            </button>
+            <a href="/login" class="btn btn-secondary">
+              <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4M10 17l5-5-5-5M15 12H3"/></svg>
+              Switch Account / Sign In Screen
+            </a>
+          </div>
+
+          <!-- Danger Zone: Wipe Clinical Data & Delete Account -->
+          <div style="margin-top: 2.5rem; border-top: 1px solid var(--border-subtle); padding-top: 1.5rem;">
+            <h4 style="color: var(--color-hypo); font-size: 0.95rem; margin-bottom: 0.4rem;">Danger Zone: Wipe Local Clinical Data</h4>
+            <p style="font-size: 0.82rem; color: var(--text-muted); margin-bottom: 0.85rem;">
+              Permanently deletes all blood glucose logs, insulin records, and reminders from this device. Your master password and settings are preserved.
+            </p>
+            <button class="btn btn-danger btn-sm" onclick="app.openModal('wipeDataModal')">Wipe Clinical History</button>
+
+            <!-- Permanently Delete Account & Factory Reset -->
+            <div style="margin-top: 1.5rem; border-top: 1px dashed rgba(239, 68, 68, 0.35); padding-top: 1.25rem;">
+              <h4 style="color: var(--color-hypo); font-size: 0.95rem; margin-bottom: 0.4rem;">Permanently Delete Account & Factory Reset</h4>
+              <p style="font-size: 0.82rem; color: var(--text-muted); margin-bottom: 0.85rem;">
+                Completely deletes your master account, master password, profile parameters, and all medical history. Reverts the system to its initial unconfigured state as if you are a completely new user.
+              </p>
+              <button class="btn btn-danger btn-sm" onclick="app.openModal('deleteAccountModal')">Delete Master Account & Reset</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- SUB-TAB 4: ACTIVITY LOGS -->
+        <div id="subView-audit" class="settings-subview" style="display: none;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+            <div>
+              <h3 style="font-size: 1.05rem; color: var(--accent-primary);">System & Security Activity Logs</h3>
+              <div style="font-size: 0.8rem; color: var(--text-muted);">Audits logins, new readings, edits, deletions, and clinical setting changes</div>
+            </div>
+            <button class="btn btn-secondary btn-sm" onclick="app.fetchAuditLogs()">Refresh Logs</button>
+          </div>
+
+          <div class="table-responsive">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Timestamp</th>
+                  <th>Event</th>
+                  <th>Details</th>
+                </tr>
+              </thead>
+              <tbody id="auditLogTableBody">
+                <tr><td colspan="3" style="text-align: center; color: var(--text-muted); padding: 1.5rem;">Loading audit records...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+      </div>
+
+    </main>
+
+  </div>
+
+  <!-- ==================== MODALS ==================== -->
+
+  <!-- Modal: Permanently Delete Master Account & Factory Reset -->
+  <div id="deleteAccountModal" class="modal-overlay subtle-blur">
+    <div class="modal-card" style="border-color: rgba(239, 68, 68, 0.7); max-width: 520px;">
+      <button class="modal-close-btn" onclick="app.closeModal('deleteAccountModal')">&times;</button>
+      
+      <div style="text-align: center; margin-bottom: 1.25rem;">
+        <span class="pill" style="color: var(--color-hypo); border-color: rgba(239, 68, 68, 0.5);">PERMANENT DELETION WARNING</span>
+        <h3 style="font-size: 1.35rem; font-weight: 800; color: #ffffff; margin-top: 0.5rem;">Delete Master Account</h3>
+        <p style="font-size: 0.85rem; color: #fca5a5; margin-top: 0.25rem;">
+          Factory Reset to Initial Unconfigured State
+        </p>
+      </div>
+
+      <div style="background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.4); border-radius: var(--radius-md); padding: 1rem; margin-bottom: 1.25rem; font-size: 0.85rem; color: #fecaca; line-height: 1.45;">
+        This action will permanently delete your master account, master password, all personal clinical parameters, and all medical history from this device. Once deleted, you will be redirected to the initial setup screen as if you are a completely new user.
+      </div>
+
+      <div id="deleteAccountErrorBanner" style="display: none; background: rgba(239, 68, 68, 0.25); border: 1px solid #ef4444; border-radius: var(--radius-sm); padding: 0.75rem; color: #fca5a5; font-size: 0.82rem; margin-bottom: 1rem;"></div>
+
+      <form onsubmit="event.preventDefault(); app.executeDeleteAccount();">
+        <div class="form-group">
+          <label class="form-label">Master Password</label>
+          <div class="password-input-wrap">
+            <input id="deleteAccountPasswordInput" type="password" class="form-input" placeholder="Enter master password..." required autofocus>
+            <button type="button" class="password-toggle-btn" onclick="app.togglePasswordVisibility('deleteAccountPasswordInput', this)" title="Show / Hide password">
+              <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Type "DELETE" to confirm:</label>
+          <input id="deleteAccountConfirmInput" type="text" class="form-input" placeholder="DELETE" required style="font-family: monospace; font-weight: bold; letter-spacing: 0.1em;">
+        </div>
+
+        <div style="display: flex; gap: 0.75rem; margin-top: 1.25rem;">
+          <button type="button" class="btn btn-secondary" style="flex: 1;" onclick="app.closeModal('deleteAccountModal')">Cancel</button>
+          <button type="submit" class="btn btn-danger" style="flex: 1.6;">Permanently Delete & Reset</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal: In-App Change Password (Clean UX replacing prompt) -->
+  <div id="changePasswordModal" class="modal-overlay subtle-blur">
+    <div class="modal-card" style="max-width: 480px;">
+      <button class="modal-close-btn" onclick="app.closeModal('changePasswordModal')">&times;</button>
+      
+      <div style="text-align: center; margin-bottom: 1.25rem;">
+        <h3 style="font-size: 1.3rem; font-weight: 700;">Update Master Password</h3>
+        <p style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 0.25rem;">
+          Change your security credentials for remote access & settings lock.
+        </p>
+      </div>
+
+      <div id="changePasswordErrorBanner" style="display: none; background: rgba(239, 68, 68, 0.15); border: 1px solid #ef4444; border-radius: var(--radius-sm); padding: 0.65rem; color: #fca5a5; font-size: 0.82rem; margin-bottom: 1rem;"></div>
+
+      <form onsubmit="event.preventDefault(); app.submitChangePassword();">
+        <div class="form-group">
+          <label class="form-label">Current Master Password (leave empty if none set yet)</label>
+          <div class="password-input-wrap">
+            <input id="changePwdCurrent" type="password" class="form-input" placeholder="Current password...">
+            <button type="button" class="password-toggle-btn" onclick="app.togglePasswordVisibility('changePwdCurrent', this)" title="Show / Hide password">
+              <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">New Password (min 6 characters)</label>
+          <div class="password-input-wrap">
+            <input id="changePwdNew" type="password" class="form-input" placeholder="Min 6 characters" required>
+            <button type="button" class="password-toggle-btn" onclick="app.togglePasswordVisibility('changePwdNew', this)" title="Show / Hide password">
+              <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Confirm New Password</label>
+          <div class="password-input-wrap">
+            <input id="changePwdConfirm" type="password" class="form-input" placeholder="Repeat new password" required>
+            <button type="button" class="password-toggle-btn" onclick="app.togglePasswordVisibility('changePwdConfirm', this)" title="Show / Hide password">
+              <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <div style="display: flex; gap: 0.75rem; margin-top: 1.25rem;">
+          <button type="button" class="btn btn-secondary" style="flex: 1;" onclick="app.closeModal('changePasswordModal')">Cancel</button>
+          <button type="submit" class="btn btn-primary" style="flex: 2;">Save Password</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal: Quick Log Glucose -->
+  <div id="logBgModal" class="modal-overlay">
+    <div class="modal-card">
+      <button class="modal-close-btn" onclick="app.closeModal('logBgModal')">&times;</button>
+      <h3 style="font-size: 1.25rem; font-weight: 700; margin-bottom: 1rem;">Log Blood Glucose</h3>
+      
+      <form onsubmit="event.preventDefault(); submitQuickBg();">
+        <div class="form-group">
+          <label class="form-label">Blood Glucose Value (<span class="dynamic-unit-label">mg/dL</span>)</label>
+          <input id="quickBgVal" type="number" step="any" class="form-input" placeholder="e.g. 110" required autofocus>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Context / Tag</label>
+          <select id="quickBgTag" class="form-select">
+            <option value="">None / General</option>
+            <option value="fasting">Fasting</option>
+            <option value="pre-meal">Pre-Meal</option>
+            <option value="post-meal">Post-Meal (2h)</option>
+            <option value="bedtime">Bedtime</option>
+            <option value="exercise">Exercise</option>
+          </select>
+        </div>
+        <button type="submit" class="btn btn-primary btn-lg" style="width: 100%;">Save Reading</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal: Quick Log Insulin -->
+  <div id="logInsulinModal" class="modal-overlay subtle-blur">
+    <div class="modal-card" style="max-width: 480px;">
+      <button class="modal-close-btn" onclick="app.closeModal('logInsulinModal')">&times;</button>
+      <h3 style="font-size: 1.25rem; font-weight: 700; margin-bottom: 1rem;">Log Insulin Dose</h3>
+      
+      <form onsubmit="event.preventDefault(); submitQuickInsulin();">
+        <div class="form-group">
+          <label class="form-label">Dose Kind</label>
+          <select id="quickDoseKind" class="form-select" onchange="app.onDoseKindChange(this.value)">
+            <option value="meal">Meal Bolus</option>
+            <option value="correction">Correction Bolus</option>
+            <option value="basal">Long-Acting / Basal</option>
+          </select>
+        </div>
+
+        <!-- Integrated Correction Bolus Calculator & BG Logger -->
+        <div id="correctionDetailsSection" style="display: none;">
+          <div class="form-group">
+            <label class="form-label">Current Blood Glucose (<span class="dynamic-unit-label">mg/dL</span>)</label>
+            <input id="correctionBgInput" type="number" step="any" class="form-input" placeholder="Enter current BG reading..." oninput="app.recomputeCorrectionRecommendation()">
+          </div>
+
+          <!-- Recommendation display box -->
+          <div id="correctionRecommendationBox" style="display: none; padding: 0.85rem 1rem; border-radius: var(--radius-md); background: rgba(14, 165, 233, 0.08); border: 1px solid var(--border-highlight); margin-bottom: 1.15rem;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <div>
+                <div style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em;">Recommended Dose</div>
+                <div id="correctionDoseValue" style="font-size: 1.35rem; font-weight: 800; color: var(--accent-primary); margin-top: 0.15rem;">-- U</div>
+              </div>
+              <button type="button" class="btn btn-secondary btn-sm" onclick="app.applyRecommendedCorrection()">Use Recommended Dose</button>
+            </div>
+            <div id="correctionDetailsNote" style="font-size: 0.78rem; color: var(--text-secondary); margin-top: 0.4rem; line-height: 1.35;"></div>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Insulin Units to Administer (U)</label>
+          <input id="quickUnitsVal" type="number" step="0.1" class="form-input" placeholder="e.g. 4.5" required autofocus oninput="app.checkCorrectionOverdose()">
+        </div>
+
+        <!-- In-Dialog Hypoglycemia Overdose Warning Banner -->
+        <div id="correctionOverdoseWarning" style="display: none; padding: 0.85rem 1rem; border-radius: var(--radius-md); background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.5); color: #fca5a5; font-size: 0.85rem; margin-bottom: 1.15rem; line-height: 1.45;">
+          ⚠️ <strong style="color: #f87171;">Hypoglycemia Overdose Warning:</strong><br>
+          <span id="correctionOverdoseText"></span>
+        </div>
+
+        <button type="submit" class="btn btn-primary btn-lg" style="width: 100%;">Save Bolus</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal: Edit Log Reading -->
+  <div id="editLogModal" class="modal-overlay">
+    <div class="modal-card">
+      <button class="modal-close-btn" onclick="app.closeModal('editLogModal')">&times;</button>
+      <h3 style="font-size: 1.25rem; font-weight: 700; margin-bottom: 1rem;">Edit Recorded Log Reading</h3>
+      
+      <form onsubmit="event.preventDefault(); app.submitEditLog();">
+        <input id="editLogId" type="hidden">
+        
+        <div class="grid-cols-2">
+          <div class="form-group">
+            <label class="form-label">Blood Glucose (<span class="dynamic-unit-label">mg/dL</span>)</label>
+            <input id="editBgVal" type="number" step="any" class="form-input">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Insulin Units (U)</label>
+            <input id="editInsulinVal" type="number" step="0.1" class="form-input">
+          </div>
+        </div>
+
+        <div class="grid-cols-2">
+          <div class="form-group">
+            <label class="form-label">Carbohydrates (g)</label>
+            <input id="editCarbsVal" type="number" step="any" class="form-input">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Dose Kind</label>
+            <select id="editDoseKind" class="form-select">
+              <option value="meal">Meal Bolus</option>
+              <option value="correction">Correction Bolus</option>
+              <option value="basal">Basal / Long-Acting</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Description / Notes</label>
+          <input id="editDescVal" type="text" class="form-input">
+        </div>
+
+        <div class="form-group" style="margin-bottom: 1.5rem;">
+          <label style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.88rem; cursor: pointer;">
+            <input id="editSpoiledVal" type="checkbox"> Mark as Spoiled / Expired Insulin (Excludes from IOB calculation)
+          </label>
+        </div>
+
+        <button type="submit" class="btn btn-primary btn-lg" style="width: 100%;">Update Log Entry</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal: Hypo Rescue Full Protocol with Recovery Entry -->
+  <div id="hypoModal" class="modal-overlay subtle-blur">
+    <div class="modal-card" style="border-color: rgba(239, 68, 68, 0.6); max-width: 560px;">
+      <button class="modal-close-btn" onclick="app.closeModal('hypoModal')">&times;</button>
+      <div style="text-align: center; margin-bottom: 1.25rem;">
+        <span class="pill" style="color: var(--color-hypo); border-color: rgba(239,68,68,0.4);">CRITICAL HYPO RESCUE</span>
+        <h2 style="font-size: 1.4rem; font-weight: 800; color: var(--color-hypo); margin-top: 0.5rem;">The Rule of 15 Protocol</h2>
+      </div>
+
+      <div style="text-align: center; background: rgba(0,0,0,0.3); border-radius: var(--radius-md); padding: 1.25rem; margin-bottom: 1.25rem;">
+        <div style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase;">15-MINUTE RE-CHECK TIMER</div>
+        <div id="hypoCountdown" style="font-size: 3.5rem; font-weight: 800; font-variant-numeric: tabular-nums; color: var(--color-hypo);">15:00</div>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 0.65rem; font-size: 0.88rem; color: var(--text-secondary); margin-bottom: 1.25rem;">
+        <div><b>Step 1:</b> Take <b>15 &ndash; 20 grams</b> of fast-acting carbohydrates:
+          <ul style="padding-left: 1.25rem; margin-top: 0.25rem;">
+            <li>4 glucose tablets (or 1 tube glucose gel)</li>
+            <li>1/2 cup (4 oz) fruit juice or regular soda</li>
+            <li>5 &ndash; 6 hard candies / jelly beans</li>
+          </ul>
+        </div>
+        <div><b>Step 2:</b> Rest and do NOT administer any insulin. Wait for the 15-minute timer.</div>
+        <div style="color: #ec4899;"><b>Emergency:</b> If severe or unresponsive, administer Glucagon and call emergency services immediately!</div>
+      </div>
+
+      <!-- Recovery Glucose Prompt (Replaces plain dismiss) -->
+      <div style="background: rgba(255, 255, 255, 0.04); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 1rem; margin-bottom: 1rem;">
+        <label class="form-label" style="color: var(--color-target); font-weight: bold; margin-bottom: 0.4rem;">
+          Step 3: Enter recovery blood glucose reading:
+        </label>
+        <div style="display: flex; gap: 0.5rem;">
+          <input id="hypoRecoveryBg" type="number" step="any" class="form-input" style="flex: 1;" placeholder="New BG reading (e.g. 95)">
+          <button class="btn btn-primary" onclick="app.submitHypoRecovery()">Save & Clear</button>
+        </div>
+      </div>
+
+      <button class="btn btn-secondary btn-sm" style="width: 100%;" onclick="app.closeModal('hypoModal');">
+        Minimize Window (Timer continues in header)
+      </button>
+    </div>
+  </div>
+
+  <!-- Modal: 2-Step Secure Wipe Clinical Data -->
+  <div id="wipeDataModal" class="modal-overlay subtle-blur">
+    <div class="modal-card" style="border-color: rgba(239, 68, 68, 0.5);">
+      <button class="modal-close-btn" onclick="app.closeModal('wipeDataModal')">&times;</button>
+      
+      <div style="text-align: center; margin-bottom: 1.25rem;">
+        <span class="pill" style="color: var(--color-hypo); border-color: rgba(239, 68, 68, 0.4);">PERMANENT DELETION WARNING</span>
+        <h3 style="font-size: 1.3rem; font-weight: 700; color: #ffffff; margin-top: 0.5rem;">Wipe Clinical History</h3>
+      </div>
+
+      <div style="background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: var(--radius-md); padding: 1rem; margin-bottom: 1.25rem; font-size: 0.88rem; color: #fca5a5;">
+        This action will permanently wipe all blood glucose logs, insulin doses, meal tags, and reminders on this local device. Your personal clinical profile and passwords will be preserved.
+      </div>
+
+      <div id="wipeErrorBanner" style="display: none; background: rgba(239, 68, 68, 0.2); border: 1px solid #ef4444; border-radius: var(--radius-sm); padding: 0.75rem; color: #fca5a5; font-size: 0.85rem; margin-bottom: 1rem;"></div>
+
+      <form onsubmit="event.preventDefault(); app.executeWipeData();">
+        <div class="form-group">
+          <label class="form-label">To proceed, enter your Master Password:</label>
+          <div class="password-input-wrap">
+            <input id="wipeDataPasswordInput" type="password" class="form-input" placeholder="Master password..." required autofocus>
+            <button type="button" class="password-toggle-btn" onclick="app.togglePasswordVisibility('wipeDataPasswordInput', this)" title="Show / Hide password">
+              <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+            </button>
+          </div>
+        </div>
+        
+        <div style="display: flex; gap: 0.75rem; margin-top: 1rem;">
+          <button type="button" class="btn btn-secondary" style="flex: 1;" onclick="app.closeModal('wipeDataModal')">Cancel</button>
+          <button type="submit" class="btn btn-danger" style="flex: 1;">Confirm & Wipe Data</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Toast Container -->
+  <div id="toastContainer" class="toast-container"></div>
+
+  <!-- Scripts -->
+  <script src="/static/js/chart.js"></script>
+  <script src="/static/js/timer.js"></script>
+  <script src="/static/js/app.js"></script>
+
+  <script>
+    async function saveClinicalSettings() {
+      const birthDate = document.getElementById('setBirthDate').value;
+      const data = {
+        glucose_unit: document.getElementById('setUnit').value,
+        target_bg: parseFloat(document.getElementById('setTargetBg').value),
+        target_low: parseFloat(document.getElementById('setTargetLow').value),
+        target_high: parseFloat(document.getElementById('setTargetHigh').value),
+        icr: parseFloat(document.getElementById('setIcr').value) || null,
+        isf: parseFloat(document.getElementById('setIsf').value) || null,
+        insulin_type: document.getElementById('setInsulinType').value,
+        insulin_duration_hours: parseFloat(document.getElementById('setDia').value) || 4.0,
+        username: document.getElementById('setDisplayName').value || null,
+        birth_date: birthDate || null
+      };
+
+      const res = await fetch('/api/profile', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+      });
+      if (res.ok) {
+        app.showToast('Clinical & Profile settings saved!', 'success');
+        await app.loadProfile();
+        await app.refreshData();
+      } else {
+        alert('Failed to save settings.');
+      }
+    }
+
+    async function saveAiSettings() {
+      const modelVal = app.getSelectedAiModel();
+      const data = {
+        ai_api_key: document.getElementById('setAiKey').value || null,
+        ai_model: modelVal || null,
+        ai_base_url: document.getElementById('setAiUrl').value || null
+      };
+
+      const res = await fetch('/api/profile', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+      });
+      if (res.ok) {
+        app.showToast('AI Vision configuration saved!', 'success');
+        await app.loadProfile();
+      } else {
+        alert('Failed to save AI configuration.');
+      }
+    }
+
+    async function submitQuickBg() {
+      const val = document.getElementById('quickBgVal').value;
+      const tag = document.getElementById('quickBgTag').value;
+      const tags = tag ? [tag] : [];
+      await fetch('/api/logs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bg_value: val, tags })
+      });
+      app.closeModal('logBgModal');
+      document.getElementById('quickBgVal').value = '';
+      app.showToast('Glucose reading logged!', 'success');
+      await app.refreshData();
+    }
+
+    async function submitQuickInsulin() {
+      const units = parseFloat(document.getElementById('quickUnitsVal').value);
+      const kind = document.getElementById('quickDoseKind').value;
+      const payload = {
+        insulin_units: units,
+        dose_kind: kind,
+        tags: [kind]
+      };
+
+      if (kind === 'correction') {
+        const bgInput = document.getElementById('correctionBgInput');
+        if (bgInput && bgInput.value) {
+          payload.bg_value = parseFloat(bgInput.value);
+        }
+      }
+
+      await fetch('/api/logs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      app.closeModal('logInsulinModal');
+      document.getElementById('quickUnitsVal').value = '';
+      const bgInput = document.getElementById('correctionBgInput');
+      if (bgInput) bgInput.value = '';
+      app.showToast('Insulin dose logged successfully!', 'success');
+      await app.refreshData();
+    }
+
+    function showChangePasswordForm() {
+      app.openChangePasswordModal();
+    }
+  </script>
+
+</body>
+</html>

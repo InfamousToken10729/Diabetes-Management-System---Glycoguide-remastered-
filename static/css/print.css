@@ -1,0 +1,103 @@
+/* ====================================================================
+   GlycoGuide Remastered — Printable Doctor / Clinical Report CSS
+   ==================================================================== */
+
+@media print {
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+    font-size: 11pt;
+    line-height: 1.4;
+    padding: 0;
+    margin: 0;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+
+  .report-page {
+    width: 100%;
+    max-width: 100%;
+    margin: 0;
+    padding: 20mm;
+    box-shadow: none;
+    border: none;
+    background: transparent;
+  }
+
+  .report-header {
+    border-bottom: 2pt solid #0f172a;
+    padding-bottom: 12pt;
+    margin-bottom: 16pt;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+  }
+
+  .report-title h1 {
+    font-size: 18pt;
+    font-weight: bold;
+    color: #0f172a;
+    margin-bottom: 4pt;
+  }
+
+  .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12pt;
+    margin-bottom: 16pt;
+  }
+
+  .stat-box {
+    border: 1pt solid #cbd5e1;
+    border-radius: 4pt;
+    padding: 8pt;
+    background: #f8fafc !important;
+  }
+
+  .stat-label {
+    font-size: 8pt;
+    font-weight: bold;
+    color: #64748b;
+    text-transform: uppercase;
+  }
+
+  .stat-val {
+    font-size: 16pt;
+    font-weight: bold;
+    color: #0f172a;
+    margin-top: 2pt;
+  }
+
+  .table-report {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 14pt;
+    font-size: 9pt;
+  }
+
+  .table-report th {
+    background: #f1f5f9 !important;
+    border-bottom: 1.5pt solid #94a3b8;
+    color: #334155;
+    font-weight: bold;
+    padding: 6pt;
+    text-align: left;
+  }
+
+  .table-report td {
+    border-bottom: 1pt solid #e2e8f0;
+    padding: 5pt 6pt;
+    color: #1e293b;
+  }
+
+  .tir-bar-print {
+    height: 14pt;
+    display: flex;
+    border-radius: 2pt;
+    overflow: hidden;
+    margin: 10pt 0 16pt 0;
+    border: 1pt solid #94a3b8;
+  }
+}

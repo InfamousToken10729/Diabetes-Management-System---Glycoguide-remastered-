@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GlycoGuide — Clinical Summary Report ({{ profile.username or 'Patient' }})</title>
+  <link rel="stylesheet" href="/static/css/print.css">
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+      margin: 0;
+      padding: 2rem;
+      background: #f8fafc;
+      color: #0f172a;
+    }
+    .report-page {
+      max-width: 900px;
+      margin: 0 auto;
+      background: #ffffff;
+      padding: 2.5rem;
+      border-radius: 8px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+    }
+    .report-header {
+      display: flex;
+      justify-content: space-between;
+      border-bottom: 2px solid #0f172a;
+      padding-bottom: 1rem;
+      margin-bottom: 1.5rem;
+    }
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+    .stat-box {
+      background: #f1f5f9;
+      padding: 0.85rem;
+      border-radius: 6px;
+      border: 1px solid #e2e8f0;
+    }
+    .stat-label {
+      font-size: 0.72rem;
+      font-weight: bold;
+      color: #64748b;
+      text-transform: uppercase;
+    }
+    .stat-val {
+      font-size: 1.5rem;
+      font-weight: 800;
+      color: #0f172a;
+      margin-top: 0.2rem;
+    }
+    .table-report {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.88rem;
+      margin-top: 1rem;
+    }
+    .table-report th {
+      background: #f8fafc;
+      border-bottom: 2px solid #cbd5e1;
+      padding: 0.6rem;
+      text-align: left;
+      font-weight: 600;
+      color: #475569;
+    }
+    .table-report td {
+      border-bottom: 1px solid #e2e8f0;
+      padding: 0.55rem 0.6rem;
+    }
+    .btn-print {
+      background: #0284c7;
+      color: #ffffff;
+      border: none;
+      padding: 0.65rem 1.25rem;
+      border-radius: 6px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="no-print" style="max-width: 900px; margin: 0 auto 1.5rem auto; display: flex; justify-content: space-between; align-items: center;">
+    <a href="/history" style="color: #0284c7; text-decoration: none; font-weight: 600;">&larr; Back to GlycoGuide</a>
+    <button class="btn-print" onclick="window.print()">Print / Save as PDF</button>
+  </div>
+
+  <div class="report-page">
+    
+    <div class="report-header">
+      <div>
+        <h1 style="font-size: 1.6rem; margin: 0; font-weight: 800;">GlycoGuide &bull; Clinical Diabetes Summary</h1>
+        <div style="font-size: 0.85rem; color: #64748b; margin-top: 0.2rem;">Type 1 Diabetes Management & Glycemic Pattern Report</div>
+      </div>
+      <div style="text-align: right; font-size: 0.85rem; color: #475569;">
+        <div><b>Patient:</b> {{ profile.username or 'Main Account' }}</div>
+        <div><b>Period:</b> Last {{ days }} Days</div>
+        <div><b>Generated:</b> {{ generated_at }}</div>
+      </div>
+    </div>
+
+    <!-- Patient Settings Summary -->
+    <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 0.85rem 1rem; margin-bottom: 1.5rem; display: flex; justify-content: space-between; font-size: 0.82rem; color: #334155;">
+      <div><b>Target Glucose:</b> {{ profile.target_bg }} {{ unit }} (Range: {{ profile.target_low }} &ndash; {{ profile.target_high }})</div>
+      <div><b>ICR:</b> {{ profile.icr or '--' }} g/U</div>
+      <div><b>ISF:</b> {{ profile.isf or '--' }} {{ unit }}/U</div>
+      <div><b>Insulin:</b> {{ profile.insulin_type }} ({{ profile.insulin_duration_hours }}h DIA)</div>
+    </div>
+
+    <!-- Key Metrics Grid -->
+    <div class="stats-grid">
+      <div class="stat-box">
+        <div class="stat-label">Average Glucose</div>
+        <div class="stat-val">
+          {% if analytics.mean_bg > 0 %}
+            {{ (analytics.mean_bg / (18.0182 if unit == 'mmol/L' else 1)) | round(1) }} <span style="font-size: 0.8rem; font-weight: normal; color: #64748b;">{{ unit }}</span>
+          {% else %}
+            --
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="stat-box">
+        <div class="stat-label">Estimated HbA1c (ADAG)</div>
+        <div class="stat-val">
+          {% if analytics.estimated_a1c %}
+            {{ analytics.estimated_a1c.percent }}% <span style="font-size: 0.75rem; font-weight: normal; color: #64748b;">({{ analytics.estimated_a1c.mmol_mol }} mmol/mol)</span>
+          {% else %}
+            --
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="stat-box">
+        <div class="stat-label">Time In Range (TIR)</div>
+        <div class="stat-val" style="color: #059669;">{{ analytics.in_range }}%</div>
+        <div style="font-size: 0.72rem; color: #64748b;">Target: &gt;70%</div>
+      </div>
+
+      <div class="stat-box">
+        <div class="stat-label">Glycemic Variability (CV)</div>
+        <div class="stat-val">{{ analytics.cv_percent }}%</div>
+        <div style="font-size: 0.72rem; color: #64748b;">Target: &lt;36%</div>
+      </div>
+    </div>
+
+    <!-- Time in Range Distribution -->
+    <div style="margin-bottom: 1.5rem;">
+      <div style="font-size: 0.85rem; font-weight: bold; margin-bottom: 0.4rem; color: #334155;">Time-In-Range Glycemic Distribution:</div>
+      <div style="height: 22px; width: 100%; border-radius: 4px; overflow: hidden; display: flex; border: 1px solid #cbd5e1;">
+        <div style="background: #ef4444; width: {{ (analytics.low or 0) + (analytics.very_low or 0) }}%;" title="Low"></div>
+        <div style="background: #10b981; width: {{ analytics.in_range or 0 }}%;" title="In Range"></div>
+        <div style="background: #f59e0b; width: {{ (analytics.high or 0) + (analytics.very_high or 0) }}%;" title="High"></div>
+      </div>
+      <div style="display: flex; justify-content: space-between; font-size: 0.75rem; color: #64748b; margin-top: 0.3rem;">
+        <span>Low (&lt;70): <b>{{ (analytics.low or 0) + (analytics.very_low or 0) }}%</b> (Target: &lt;4%)</span>
+        <span>In Target (70 &ndash; 180): <b style="color: #059669;">{{ analytics.in_range }}%</b></span>
+        <span>High (&gt;180): <b>{{ (analytics.high or 0) + (analytics.very_high or 0) }}%</b> (Target: &lt;25%)</span>
+      </div>
+    </div>
+
+    <!-- Clinical Log Records Table -->
+    <h3 style="font-size: 1.05rem; font-weight: bold; margin-bottom: 0.5rem; border-bottom: 1px solid #cbd5e1; padding-bottom: 0.4rem;">
+      Detailed Chronological Log Records
+    </h3>
+
+    <table class="table-report">
+      <thead>
+        <tr>
+          <th>Date & Time</th>
+          <th>Glucose ({{ unit }})</th>
+          <th>Insulin (U)</th>
+          <th>Carbs (g)</th>
+          <th>Description / Type</th>
+          <th>Tags</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% if entries %}
+          {% for e in entries %}
+            <tr>
+              <td>{{ e.occurred_at[:16].replace('T', ' ') }}</td>
+              <td><b>{{ e.formatted_bg or '--' }}</b></td>
+              <td>{{ e.insulin_units ~ ' U' if e.insulin_units else '--' }}</td>
+              <td>{{ e.carbs ~ ' g' if e.carbs else '--' }}</td>
+              <td>{{ e.meal_description or e.dose_kind or '--' }}</td>
+              <td>{{ e.tags | join(', ') if e.tags else '--' }}</td>
+            </tr>
+          {% endfor %}
+        {% else %}
+          <tr><td colspan="6" style="text-align: center; color: #64748b; padding: 1.5rem;">No records logged during this timeframe.</td></tr>
+        {% endif %}
+      </tbody>
+    </table>
+
+    <div style="margin-top: 2rem; border-top: 1px solid #e2e8f0; padding-top: 0.85rem; font-size: 0.75rem; color: #94a3b8; display: flex; justify-content: space-between;">
+      <span>GlycoGuide Remastered &bull; Confidential Medical Summary</span>
+      <span>Calculated using ADAG clinical standard</span>
+    </div>
+
+  </div>
+
+</body>
+</html>

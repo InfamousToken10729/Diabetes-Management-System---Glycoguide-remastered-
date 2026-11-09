@@ -1,0 +1,26 @@
+# Virtual Environments
+venv/
+.venv/
+env/
+__pycache__/
+*.pyc
+
+# Local Clinical Database (Keep medical data private!)
+data/
+backups/
+*.db
+*.sqlite3
+*.session_secret
+
+# Native Build Artifacts
+build/
+dist/
+*.spec
+*.exe
+*.pdb
+
+# Editor & OS files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

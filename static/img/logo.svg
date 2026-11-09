@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" fill="none">
+  <defs>
+    <linearGradient id="glycoGrad" x1="4" y1="4" x2="44" y2="44" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#10b981" />
+      <stop offset="50%" stop-color="#06b6d4" />
+      <stop offset="100%" stop-color="#3b82f6" />
+    </linearGradient>
+    <filter id="hexGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="2" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+  </defs>
+  <!-- Outer Hexagon Ring -->
+  <polygon points="24,3 43,14 43,34 24,45 5,34 5,14" fill="#0f172a" stroke="url(#glycoGrad)" stroke-width="2.5" stroke-linejoin="round" />
+  <!-- Inner Glow Path -->
+  <polygon points="24,7 39,16 39,32 24,41 9,32 9,16" fill="url(#glycoGrad)" fill-opacity="0.12" />
+  <!-- Glucose Ring Bonds -->
+  <circle cx="24" cy="16" r="3" fill="#10b981" filter="url(#hexGlow)" />
+  <circle cx="33" cy="21" r="3" fill="#06b6d4" filter="url(#hexGlow)" />
+  <circle cx="33" cy="31" r="3" fill="#3b82f6" filter="url(#hexGlow)" />
+  <circle cx="24" cy="36" r="3" fill="#6366f1" filter="url(#hexGlow)" />
+  <circle cx="15" cy="31" r="3" fill="#06b6d4" filter="url(#hexGlow)" />
+  <circle cx="15" cy="21" r="3" fill="#10b981" filter="url(#hexGlow)" />
+  <!-- Central Pulse Wave -->
+  <path d="M16 26 L21 26 L23 20 L25 32 L27 24 L29 27 L32 26" stroke="#ffffff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" />
+</svg>
