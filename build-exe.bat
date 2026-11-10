@@ -1,53 +1,76 @@
 @echo off
-setlocal enabledelayedexpansion
+setlocal
 
-title GlycoGuide Remastered — Executable Builder
+title GlycoGuide Remastered - Executable Builder
 echo ====================================================================
-echo      GlycoGuide Remastered — Standalone Windows (.exe) Builder
+echo      GlycoGuide Remastered - Standalone Windows ^(.exe^) Builder
 echo ====================================================================
 echo.
 
-set ROOT_DIR=%~dp0
+set "ROOT_DIR=%~dp0"
 cd /d "%ROOT_DIR%"
 
-:: Check for PyInstaller
-python -m pip show pyinstaller >nul 2>&1
-if %ERRORLEVEL% NEQ 0 (
-    echo [1/3] Installing PyInstaller...
-    python -m pip install pyinstaller
-) else (
-    echo [1/3] PyInstaller is ready.
+set "PY_EXE="
+set "PY_ARGS="
+if not exist "%ROOT_DIR%.venv\Scripts\python.exe" goto :check_sys_py
+"%ROOT_DIR%.venv\Scripts\python.exe" -c "import sys" >nul 2>&1
+if errorlevel 1 goto :check_sys_py
+set "PY_EXE=%ROOT_DIR%.venv\Scripts\python.exe"
+goto :found_py
+
+:check_sys_py
+python -c "import sys; raise SystemExit(0 if sys.version_info[0]>=3 else 1)" >nul 2>&1
+if not errorlevel 1 (
+    set "PY_EXE=python"
+    goto :found_py
+)
+py -3 -c "import sys" >nul 2>&1
+if not errorlevel 1 (
+    set "PY_EXE=py"
+    set "PY_ARGS=-3"
+    goto :found_py
 )
 
-echo [2/3] Building standalone GlycoGuide.exe...
-python -m PyInstaller --noconfirm --clean --onefile ^
+echo [ERROR] Python 3 was not detected.
+pause
+exit /b 1
+
+:found_py
+echo [1/4] Verifying application dependencies...
+"%PY_EXE%" %PY_ARGS% -m pip install -q -r "%ROOT_DIR%requirements.txt"
+
+echo [2/4] Verifying PyInstaller...
+"%PY_EXE%" %PY_ARGS% -m pip show pyinstaller >nul 2>&1
+if not errorlevel 1 goto :build_exe
+echo Installing PyInstaller...
+"%PY_EXE%" %PY_ARGS% -m pip install pyinstaller
+if errorlevel 1 goto :build_fail
+
+:build_exe
+echo [3/4] Building standalone GlycoGuide.exe...
+"%PY_EXE%" %PY_ARGS% -m PyInstaller --noconfirm --clean --onefile ^
     --name "GlycoGuide" ^
     --add-data "static;static" ^
     --add-data "templates;templates" ^
     --icon "static/img/favicon.ico" ^
     app.py
+if errorlevel 1 goto :build_fail
 
-if %ERRORLEVEL% NEQ 0 (
-    echo [ERROR] PyInstaller compilation failed.
-    pause
-    exit /b 1
-)
-
-:: Move exe to remastered root
-if exist "dist\GlycoGuide.exe" (
-    copy /y "dist\GlycoGuide.exe" "%ROOT_DIR%GlycoGuide.exe" >nul
-)
-
-:: Clean up build intermediates
+if exist "dist\GlycoGuide.exe" copy /y "dist\GlycoGuide.exe" "%ROOT_DIR%GlycoGuide.exe" >nul
 if exist "build" rd /s /q "build"
 if exist "dist" rd /s /q "dist"
 if exist "GlycoGuide.spec" del /f /q "GlycoGuide.spec"
 
 echo.
 echo ====================================================================
-echo [3/3] Build Complete!
-echo Standalone Executable created: %ROOT_DIR%GlycoGuide.exe
-echo You can now run GlycoGuide.exe directly on any Windows PC!
+echo [4/4] Build Complete!
+echo Standalone Executable: %ROOT_DIR%GlycoGuide.exe
 echo ====================================================================
 echo.
 pause
+exit /b 0
+
+:build_fail
+echo [ERROR] PyInstaller compilation failed.
+pause
+exit /b 1

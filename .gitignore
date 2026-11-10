@@ -11,6 +11,7 @@ backups/
 *.db
 *.sqlite3
 *.session_secret
+.installed_version
 
 # Native Build Artifacts
 build/

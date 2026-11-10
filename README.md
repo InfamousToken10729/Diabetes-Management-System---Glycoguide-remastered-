@@ -1,52 +1,69 @@
 # GlycoGuide Remastered — Type 1 Diabetes Assistant
 
-A remastered, high-performance, ultra-lightweight Type 1 Diabetes assistant engineered specifically for **Raspberry Pi self-hosting** and **local Windows testing**.
+A remastered, high-performance, ultra-lightweight Type 1 Diabetes assistant engineered specifically for **Raspberry Pi self-hosting** and **Windows desktop / local hosting**.
+
+* **GitHub Repository**: [`InfamousToken10729/Diabetes-Management-System---Glycoguide-remastered-`](https://github.com/InfamousToken10729/Diabetes-Management-System---Glycoguide-remastered-)
 
 ---
 
 ## 🌟 Why Remastered?
 
-| Feature | Legacy v3 (Next.js / Node / PGlite) | **GlycoGuide Remastered** |
+| Feature | Legacy (Next.js / Node / PGlite) | **GlycoGuide Remastered** |
 | :--- | :--- | :--- |
 | **Language & Engine** | Node.js + Next.js + React | **Python 3 + SQLite + Modern CSS/JS** |
 | **Storage & Database** | Heavy PostgreSQL / PGlite WASM | **Local SQLite with WAL Mode (Zero-Config)** |
-| **Total Project Size** | > 800 MB (large `node_modules` & cache) | **< 1 MB (Ultra-compact, pure source)** |
+| **Repository Size** | > 800 MB (heavy `node_modules` & cache) | **< 1 MB (Ultra-compact, pure source)** |
 | **Memory / RAM Usage** | 450 MB – 650 MB RAM | **~25 MB RAM (Runs on any Raspberry Pi)** |
 | **Server Boot Time** | ~10 – 15 seconds | **< 0.1 seconds (Instantaneous startup)** |
 | **Reliability** | Prone to WASM / hydration crashes | **Rock solid, zero external service dependencies** |
-| **Windows Testing** | Requires complex builds | **Double-click `run.bat` or `GlycoGuide.exe`** |
+| **Windows Testing** | Requires Node builds | **Double-click `run.bat` or `GlycoGuide.exe`** |
+
+---
+
+## 🍓 Quick Start: Raspberry Pi / Linux
+
+### Option 1: 1-Line Automatic Install (Fresh Raspberry Pi)
+Run this single command on your Raspberry Pi or Debian/Ubuntu machine:
+```bash
+curl -fsSL https://raw.githubusercontent.com/InfamousToken10729/Diabetes-Management-System---Glycoguide-remastered-/main/install.sh | bash
+```
+
+### Option 2: Git Clone Install
+```bash
+git clone https://github.com/InfamousToken10729/Diabetes-Management-System---Glycoguide-remastered-.git
+cd Diabetes-Management-System---Glycoguide-remastered-
+./install.sh
+```
+
+The installer automatically:
+* Installs `python3`, `python3-venv`, `git`, and `sqlite3` if missing.
+* Creates an isolated `.venv` virtual environment and installs `flask` and `requests`.
+* Initializes `data/` and `backups/` locally (preserving any existing data).
+* Installs and starts **`glycoguide.service`** (`systemd`) so GlycoGuide auto-starts on boot at `http://<YOUR_PI_IP>:8081`.
+
+### Useful Raspberry Pi / Linux Commands
+* Check service status: `sudo systemctl status glycoguide`
+* View live server logs: `sudo journalctl -u glycoguide -f`
+* Restart server: `sudo systemctl restart glycoguide`
+* Update cleanly (with auto DB backup): `./update.sh`
+* Create manual DB backup: `./backup.sh`
 
 ---
 
 ## ⚡ Quick Start: Windows
 
-1. Double-click **`run.bat`** in the `remastered/` folder.
-2. The server starts at `http://localhost:8081` and automatically opens your web browser.
+1. Clone or download this repository:
+   ```cmd
+   git clone https://github.com/InfamousToken10729/Diabetes-Management-System---Glycoguide-remastered-.git
+   cd Diabetes-Management-System---Glycoguide-remastered-
+   ```
+2. Double-click **`run.bat`**.
+   * First run automatically creates `.venv`, installs dependencies, initializes your local SQLite database, and opens `http://localhost:8081`.
+   * Subsequent runs boot instantaneously!
+3. Double-click **`update.bat`** anytime to create an automatic database backup and pull the latest updates from GitHub (or use the in-app **Update Now** notification!).
 
-### Building Standalone Windows `.exe`:
-Double-click **`build-exe.bat`** to produce a self-contained **`GlycoGuide.exe`** that runs on any Windows computer with no Python required!
-
----
-
-## 🍓 Quick Start: Raspberry Pi (1-Command Install)
-
-Clone the repository to your Raspberry Pi, enter `remastered`, and run:
-```bash
-chmod +x install.sh
-./install.sh
-```
-
-The script automatically:
-* Installs dependencies (`python3`, `pip`, `flask`, `requests`).
-* Sets up a **systemd service** (`glycoguide.service`) that automatically starts on system boot.
-* Launches on port **8081** (accessible at `http://<YOUR_PI_IP>:8081`).
-
-### Useful Commands on Raspberry Pi:
-* Check service status: `sudo systemctl status glycoguide`
-* View live server logs: `sudo journalctl -u glycoguide -f`
-* Restart server: `sudo systemctl restart glycoguide`
-* Update to latest version: `./update.sh`
-* Backup local database: `./backup.sh`
+### Building Standalone Windows `.exe`
+Double-click **`build-exe.bat`** to compile a self-contained **`GlycoGuide.exe`** that runs on any Windows PC without Python installed.
 
 ---
 
@@ -56,38 +73,30 @@ To access GlycoGuide from your smartphone anywhere in the world:
 
 1. **Set up DuckDNS**:
    * Create an account at [duckdns.org](https://www.duckdns.org) and register a domain (e.g. `my-glycoguide.duckdns.org`).
-   * Follow DuckDNS Pi instructions to set up the 5-minute cron updater script.
-
+   * Follow the DuckDNS Pi setup instructions for automatic IP updates.
 2. **Router Port Forwarding**:
-   * Log into your home router's admin panel.
-   * Add a Port Forwarding rule:
+   * Log into your router admin panel and add a Port Forwarding rule:
      * **External Port**: `8081`
      * **Internal IP**: Your Raspberry Pi's local IP (e.g. `192.168.1.150`)
      * **Internal Port**: `8081`
      * **Protocol**: `TCP`
-
 3. **Access Anywhere**:
-   * Open `http://my-glycoguide.duckdns.org:8081` from any browser worldwide!
-   * All clinical data is securely stored on your Raspberry Pi's local SQLite database.
+   * Open `http://my-glycoguide.duckdns.org:8081` from any browser!
+   * Note: Only devices authenticated with your master password can access clinical data, and sessions auto-lock after 15 minutes of inactivity.
 
 ---
 
 ## 🩺 Clinical Features & Capabilities
 
 * **Dual Units**: Seamless switching between `mg/dL` and `mmol/L` everywhere.
-* **Insulin on Board (IOB)**: Real Mudaliar pharmacokinetic exponential decay curve for Rapid-Acting (NovoRapid, Humalog, Apidra) and Ultra-Fast (Fiasp, Lyumjev) insulins.
-* **Smart Bolus Calculator**:
+* **Insulin on Board (IOB)**: Mudaliar pharmacokinetic decay curves for Rapid-Acting (`NovoRapid`, `Humalog`, `Apidra`, `Admelog`) and Ultra-Fast (`Fiasp`, `Lyumjev`) insulins.
+* **Smart Bolus Calculator & Correction Assistant**:
   * Meal bolus ($Carbs / ICR$) + Correction bolus ($(BG - Target) / ISF$).
-  * Automatic active IOB subtraction to prevent insulin stacking and hypoglycemia.
-  * Context adjustments: Exercise (-20%), Sickness (+20%), Stress (+10%).
-  * High-fat meal split bolus (60% upfront, 40% after 2 hours).
-* **AI Meal Macro Scanner**: Snap a photo or type a description to get instant carbohydrate, protein, fat, and sugar breakdowns via Google Gemini API with a 1-click "Send to Bolus" button.
-* **The Rule of 15 Hypo Rescue**: Full-screen emergency modal with a 15-minute countdown timer, synthesized audio alert beeps, fast-carb recommendations, and glucagon safety warnings.
-* **Time In Range (TIR) & eA1c**:
-  * 5-minute linear interpolated continuous glucose statistics.
-  * ADAG Estimated HbA1c formula ($eA1c = (mean\_bg + 46.7) / 28.7$) with IFCC mmol/mol conversion.
-  * Glycemic Variability ($CV\%$).
-* **Automatic ICR & ISF Ratio Suggestions**: Detects post-prandial spikes and correction-drop underperformance over your history and suggests safer ratios.
-* **Security & Inactivity Lock**: Master account password for new devices and automatic 15-minute inactivity lock.
-* **5 Modern Color Themes**: Obsidian Slate, Emerald Mint, Sunset Amber, Cyber Synthwave, and Polar Light.
-* **Doctor Clinical Report**: Printable, professionally formatted summary for endocrinologists with 1-click PDF printing.
+  * Automatic active IOB subtraction + overdose hypoglycemic carbohydrate warnings.
+  * Context adjustments: Exercise (`-20%`), Sickness (`+20%`), Stress (`+10%`).
+  * High-fat meal split bolus recommendation (`60%` upfront / `40%` extended).
+* **AI Meal Macro Scanner**: Upload or snap a plate photo with provider presets (Google Gemini, OpenAI, Groq, OpenRouter, Ollama, or Custom) and 1-click "Send to Bolus".
+* **Rule of 15 Hypo Rescue**: Auto-triggered full-screen rescue protocol with persistent 15-minute countdown timer, audio alerts, fast-carb guide, and recovery BG verification.
+* **Time In Range (TIR) & Estimated HbA1c (ADAG)**: Interpolated TIR stats, ADAG eA1c in `%` & `mmol/mol`, glycemic variability ($CV\%$), and ratio adjustment insights.
+* **Full-Page Security & Audit Logs**: Master password gatekeeping, auto-lock after 15 minutes of inactivity, activity audit trail, and safe auto-update checks every hour.
+* **5 Modern Color Themes & Printable Doctor Reports**: Obsidian Slate, Obsidian Emerald, Midnight Sunset, Cyber Synth, and Polar Light, plus 1-click CSV & Doctor Report exports.

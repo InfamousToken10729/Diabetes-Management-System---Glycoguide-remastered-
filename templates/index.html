@@ -611,10 +611,12 @@
           </h3>
           <div class="form-group">
             <label class="form-label">GitHub Repository URL</label>
-            <div style="display: flex; gap: 0.5rem;">
-              <input id="setGithubRepo" type="text" class="form-input" style="flex: 1;" placeholder="https://github.com/InfamousToken10729/Diabetes-Management-System-v2">
-              <button type="button" class="btn btn-secondary" onclick="app.checkForUpdates(true)">Check for Updates</button>
+            <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+              <input id="setGithubRepo" type="text" class="form-input" style="flex: 1; min-width: 240px;" placeholder="https://github.com/InfamousToken10729/Diabetes-Management-System---Glycoguide-remastered-">
+              <button type="button" class="btn btn-secondary" onclick="app.saveGithubRepo()">Save Repo</button>
+              <button type="button" class="btn btn-primary" onclick="app.checkForUpdates(true)">Check for Updates</button>
             </div>
+            <div id="githubRepoStatusText" style="font-size: 0.78rem; color: var(--text-muted); margin-top: 0.45rem;"></div>
           </div>
 
           <!-- Master Password Security Section -->

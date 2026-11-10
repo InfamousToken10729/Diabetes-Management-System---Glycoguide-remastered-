@@ -1598,11 +1598,61 @@ class GlycoApp {
   // ==========================================
   // System Updates (GitHub Releases)
   // ==========================================
+  async saveGithubRepo(silent = false) {
+    const input = document.getElementById('setGithubRepo');
+    if (!input) return false;
+    const repoUrl = input.value.trim();
+    if (!repoUrl) {
+      if (!silent) this.showToast('Please enter a GitHub repository URL.', 'warning');
+      return false;
+    }
+    try {
+      const res = await fetch('/api/profile', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ github_repo: repoUrl })
+      });
+      if (res.ok) {
+        this.profile = await res.json();
+        if (!silent) this.showToast('GitHub repository URL saved!', 'success');
+        return true;
+      }
+    } catch (e) {
+      if (!silent) this.showToast('Failed to save repository URL.', 'danger');
+    }
+    return false;
+  }
+
   async checkForUpdates(showToastIfNone = true) {
     try {
-      const res = await fetch('/api/system/update/check');
+      const repoInput = document.getElementById('setGithubRepo');
+      let queryUrl = '/api/system/update/check';
+      if (showToastIfNone && repoInput && repoInput.value.trim()) {
+        const entered = repoInput.value.trim();
+        if (entered !== (this.profile.github_repo || '').trim()) {
+          await this.saveGithubRepo(true);
+        }
+        queryUrl += '?repo=' + encodeURIComponent(entered);
+      }
+
+      const res = await fetch(queryUrl);
       const data = await res.json();
       const banner = document.getElementById('systemUpdateFloatingCard');
+      const statusEl = document.getElementById('githubRepoStatusText');
+
+      if (statusEl) {
+        if (data.error) {
+          statusEl.style.color = '#f87171';
+          statusEl.textContent = data.message || 'Could not verify updates.';
+        } else if (data.has_update) {
+          statusEl.style.color = 'var(--accent-primary)';
+          statusEl.textContent = `Update available (${data.current_commit || '?'} -> ${data.latest_commit}): "${data.message}"`;
+        } else {
+          statusEl.style.color = 'var(--text-muted)';
+          const commitText = data.current_commit ? `Current: ${data.current_commit}` : (data.latest_commit ? `Latest: ${data.latest_commit}` : '');
+          statusEl.textContent = `${data.repo ? 'Repo: ' + data.repo + ' · ' : ''}${commitText ? commitText + ' · ' : ''}${data.message || 'Up to date'}`;
+        }
+      }
 
       if (data.has_update) {
         if (banner) {
@@ -1610,33 +1660,84 @@ class GlycoApp {
           const msgEl = document.getElementById('updateBannerMessage');
           if (msgEl) msgEl.textContent = `New Version Available (${data.latest_commit}): "${data.message}"`;
         }
+        if (showToastIfNone) {
+          this.showToast(`Update available (${data.latest_commit})! Use the banner above to install.`, 'info');
+        }
       } else {
         if (banner) banner.style.display = 'none';
         if (showToastIfNone) {
-          this.showToast('Your system is up-to-date!', 'success');
+          if (data.error) {
+            this.showToast(data.message || 'Could not check GitHub updates right now.', 'warning');
+          } else {
+            this.showToast(data.message || 'Your system is up-to-date!', 'success');
+          }
         }
       }
     } catch (e) {
       console.warn('Update check failed:', e);
+      if (showToastIfNone) {
+        this.showToast('Update check failed: unable to reach server.', 'danger');
+      }
     }
+  }
+
+  async waitForServerRestart(maxWaitMs = 20000) {
+    const start = Date.now();
+    while (Date.now() - start < maxWaitMs) {
+      await new Promise(r => setTimeout(r, 1000));
+      try {
+        const probe = await fetch('/api/auth/status', { cache: 'no-store' });
+        if (probe.ok) return true;
+      } catch (_) {
+        // Server still restarting; keep polling
+      }
+    }
+    return false;
   }
 
   async applySystemUpdate() {
     const btn = document.getElementById('btnApplyUpdate');
-    if (btn) btn.textContent = 'Updating...';
+    const msgEl = document.getElementById('updateBannerMessage');
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = 'Updating...';
+    }
+    if (msgEl) msgEl.textContent = 'Creating database backup and pulling latest files...';
+
     try {
-      const res = await fetch('/api/system/update/apply', { method: 'POST' });
+      const repoInput = document.getElementById('setGithubRepo');
+      const payload = repoInput && repoInput.value.trim() ? { repo: repoInput.value.trim() } : {};
+      const res = await fetch('/api/system/update/apply', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
       const data = await res.json();
       if (data.success) {
-        alert(data.message);
-        window.location.reload();
+        if (data.restarting) {
+          if (msgEl) msgEl.textContent = 'Update installed! Restarting GlycoGuide server...';
+          this.showToast('Update installed! Waiting for server restart...', 'info');
+          await new Promise(r => setTimeout(r, 1200));
+          const cameBack = await this.waitForServerRestart(20000);
+          if (cameBack) {
+            window.location.reload();
+          } else {
+            this.showToast('Update installed. Refresh the page if it does not reload automatically.', 'warning');
+          }
+        } else {
+          this.showToast(data.message || 'Application updated successfully!', 'success');
+          setTimeout(() => window.location.reload(), 900);
+        }
       } else {
-        alert('Update failed: ' + (data.message || data.output));
+        this.showToast('Update notice: ' + (data.message || data.output || 'Update did not apply.'), 'warning');
       }
     } catch (e) {
-      alert('Update failed: ' + e.message);
+      this.showToast('Update failed: ' + e.message, 'danger');
     } finally {
-      if (btn) btn.textContent = 'Update Now';
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = 'Update Now';
+      }
     }
   }
 

@@ -553,7 +553,22 @@ def apply_update_api():
     is_valid, _ = check_auth(request)
     if not is_valid:
         return jsonify({"error": "Authentication required"}), 401
-    res = update_service.perform_update()
+
+    data = request.get_json(silent=True) or {}
+    repo = data.get("repo")
+    res = update_service.perform_update(repo)
+    if res.get("success"):
+        database.add_audit_log("SYSTEM_UPDATE", res.get("message") or "System updated from GitHub.")
+        if res.get("restarting"):
+            import threading
+            managed_by = os.environ.get("GLYCO_MANAGED_BY", "").strip().lower()
+            exit_code = 42 if managed_by == "run_bat" else 0
+
+            def _delayed_restart():
+                time.sleep(0.8)
+                os._exit(exit_code)
+
+            threading.Thread(target=_delayed_restart, daemon=True).start()
     return jsonify(res)
 
 @app.route("/api/system/clear-data", methods=["POST"])
@@ -648,18 +663,50 @@ def export_csv_api():
     return response
 
 if __name__ == "__main__":
+    import sys
+    import socket
     import threading
     import webbrowser
 
+    def _is_port_open(port: int) -> bool:
+        try:
+            with socket.create_connection(("127.0.0.1", port), timeout=0.4):
+                return True
+        except Exception:
+            return False
+
+    def _should_open_browser() -> bool:
+        if os.environ.get("GLYCO_NO_BROWSER", "").strip().lower() in ("1", "true", "yes"):
+            return False
+        if sys.platform.startswith("linux") and not (os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")):
+            return False
+        return True
+
     def _open_browser():
-        import time
         time.sleep(1.2)
         try:
             webbrowser.open(f"http://localhost:{config.PORT}")
         except Exception:
             pass
 
-    threading.Thread(target=_open_browser, daemon=True).start()
+    managed_by = os.environ.get("GLYCO_MANAGED_BY", "").strip().lower()
+    restarted = os.environ.get("GLYCO_RESTARTED", "").strip().lower() in ("1", "true", "yes")
+
+    # Wait briefly if we just self-restarted so previous socket closes cleanly
+    if restarted:
+        for _ in range(10):
+            if not _is_port_open(config.PORT):
+                break
+            time.sleep(0.3)
+
+    if managed_by != "systemd" and not restarted and _is_port_open(config.PORT):
+        print(f"\n  [INFO] GlycoGuide is already running at http://localhost:{config.PORT}")
+        if _should_open_browser():
+            webbrowser.open(f"http://localhost:{config.PORT}")
+        sys.exit(0)
+
+    if _should_open_browser():
+        threading.Thread(target=_open_browser, daemon=True).start()
 
     print(f"""
     ====================================================================
@@ -670,4 +717,11 @@ if __name__ == "__main__":
     - Database:          {config.DB_PATH}
     ====================================================================
     """)
-    app.run(host=config.HOST, port=config.PORT, debug=config.DEBUG)
+    try:
+        app.run(host=config.HOST, port=config.PORT, debug=config.DEBUG, threaded=True)
+    except OSError as e:
+        print(f"\n  [ERROR] Could not bind to port {config.PORT}: {e}")
+        print("  Another instance of GlycoGuide (or another service) may already be using this port.")
+        if getattr(sys, "frozen", False) or os.name == "nt":
+            time.sleep(4)
+        sys.exit(1)

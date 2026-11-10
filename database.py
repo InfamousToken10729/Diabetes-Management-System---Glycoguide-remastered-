@@ -155,7 +155,7 @@ def init_db():
                 default_device, "Main User", "mg/dL", 70, 180, 110,
                 None, None, "NovoRapid", 4.0,
                 "gemini-2.5-flash", "https://generativelanguage.googleapis.com",
-                "https://github.com/InfamousToken10729/Diabetes-Management-System-v2",
+                config.DEFAULT_GITHUB_REPO,
                 "dark", now_str, now_str
             ))
             cursor.execute("""
@@ -168,6 +168,16 @@ def init_db():
             """, (
                 "usr_default_main", default_device, "Main Account", "cyan", now_str, now_str
             ))
+
+        # Migration: Update legacy v2 or empty GitHub repo URL to the Remastered repo
+        cursor.execute("SELECT device_id, github_repo FROM profiles;")
+        for row in cursor.fetchall():
+            cur_repo = (row["github_repo"] or "").strip().rstrip("/")
+            if not cur_repo or cur_repo in config.LEGACY_GITHUB_REPOS:
+                cursor.execute(
+                    "UPDATE profiles SET github_repo = ? WHERE device_id = ?;",
+                    (config.DEFAULT_GITHUB_REPO, row["device_id"])
+                )
 
         conn.commit()
 
@@ -542,10 +552,11 @@ def factory_reset_all_data_and_accounts(device_id: str = "family-shared-device")
                 isf = NULL,
                 insulin_type = 'NovoRapid',
                 insulin_duration_hours = 4.0,
+                github_repo = ?,
                 theme = 'obsidian',
                 updated_at = ?
             WHERE device_id = ?;
-        """, (now_str, device_id))
+        """, (config.DEFAULT_GITHUB_REPO, now_str, device_id))
         conn.commit()
 
 # Audit Logging

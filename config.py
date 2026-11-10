@@ -52,3 +52,10 @@ DEFAULT_TARGET_HIGH = 180
 DEFAULT_TARGET_BG = 110
 DEFAULT_INSULIN_TYPE = "NovoRapid"
 DEFAULT_INSULIN_DURATION = 4.0  # DIA in hours
+
+# Repository & Self-Update Defaults
+DEFAULT_GITHUB_REPO = "https://github.com/InfamousToken10729/Diabetes-Management-System---Glycoguide-remastered-"
+LEGACY_GITHUB_REPOS = {
+    "https://github.com/InfamousToken10729/Diabetes-Management-System-v2",
+    "https://github.com/InfamousToken10729/Diabetes-Management-System-v2.git",
+}

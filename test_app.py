@@ -13,6 +13,7 @@ config.DB_PATH = os.path.join(test_tmp_dir, "test_glycoguide.db")
 import database
 import t1d_engine
 import auth_service
+import update_service
 import app
 
 def run_tests():
@@ -250,14 +251,6 @@ def run_tests():
         assert auth_service.is_password_configured() is False
         print("[PASS] POST /api/system/delete-account successfully factory-reset system to brand new state")
 
-        # Clean up test temp database
-        database.factory_reset_all_data_and_accounts()
-        try:
-            import shutil
-            shutil.rmtree(test_tmp_dir, ignore_errors=True)
-        except Exception:
-            pass
-
         # GET /report
         resp = client.get("/report?days=14")
         assert resp.status_code == 200
@@ -269,6 +262,37 @@ def run_tests():
         assert resp.status_code == 200
         assert "text/csv" in resp.headers["Content-Type"]
         print("[PASS] GET /api/export/csv returns valid CSV download")
+
+        # Test Default GitHub Repo Seed & Legacy Migration
+        prof_now = database.get_profile()
+        assert prof_now["github_repo"] == config.DEFAULT_GITHUB_REPO, f"Unexpected repo: {prof_now['github_repo']}"
+        database.update_profile("family-shared-device", {
+            "github_repo": "https://github.com/InfamousToken10729/Diabetes-Management-System-v2"
+        })
+        database.init_db()
+        migrated_prof = database.get_profile()
+        assert migrated_prof["github_repo"] == config.DEFAULT_GITHUB_REPO, "Legacy v2 repo URL should auto-migrate"
+        print("[PASS] Database automatically seeds and migrates legacy repo URL to Remastered GitHub repo")
+
+        # Test GitHub URL parsing in update_service
+        assert update_service.parse_github_owner_repo(
+            "https://github.com/InfamousToken10729/Diabetes-Management-System---Glycoguide-remastered-.git"
+        ) == ("InfamousToken10729", "Diabetes-Management-System---Glycoguide-remastered-")
+        assert update_service.parse_github_owner_repo(
+            "https://github.com/InfamousToken10729/Diabetes-Management-System---Glycoguide-remastered-"
+        ) == ("InfamousToken10729", "Diabetes-Management-System---Glycoguide-remastered-")
+        assert update_service.parse_github_owner_repo(
+            "git@github.com:InfamousToken10729/Diabetes-Management-System---Glycoguide-remastered-.git"
+        ) == ("InfamousToken10729", "Diabetes-Management-System---Glycoguide-remastered-")
+        print("[PASS] update_service parses HTTPS, .git, web URL, and SSH GitHub URLs accurately")
+
+        # Clean up test temp database
+        database.factory_reset_all_data_and_accounts()
+        try:
+            import shutil
+            shutil.rmtree(test_tmp_dir, ignore_errors=True)
+        except Exception:
+            pass
 
     print("====================================================================")
     print("         ALL UNIT & INTEGRATION TESTS PASSED 100%!                  ")
