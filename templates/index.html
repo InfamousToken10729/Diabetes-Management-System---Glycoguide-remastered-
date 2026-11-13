@@ -637,6 +637,86 @@
             </a>
           </div>
 
+          <!-- Data Backup & Restore Hub -->
+          <h3 style="font-size: 1.05rem; color: var(--accent-primary); border-bottom: 1px solid var(--border-subtle); padding-bottom: 0.4rem; margin: 1.75rem 0 1rem 0;">
+            Data Backup & Restore
+          </h3>
+          <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 1.15rem;">
+            Protect your clinical history. You can save backups on the machine hosting the server (e.g. Raspberry Pi) or download them to this device, and restore from either source.
+          </p>
+
+          <!-- 1. Server Host Backups -->
+          <div style="background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 1.15rem; margin-bottom: 1.25rem;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.85rem; flex-wrap: wrap; gap: 0.5rem;">
+              <div>
+                <strong style="font-size: 0.95rem; color: var(--text-primary); display: block;">Host Server Backups</strong>
+                <span style="font-size: 0.78rem; color: var(--text-muted);">Stored directly on the host machine in <code>backups/</code></span>
+              </div>
+              <div style="display: flex; gap: 0.5rem;">
+                <button type="button" class="btn btn-secondary btn-sm" onclick="app.fetchServerBackups()" title="Refresh server backups list">
+                  <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                  Refresh
+                </button>
+                <button type="button" class="btn btn-primary btn-sm" onclick="app.createServerBackup()">
+                  <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+                  Save Backup on Server
+                </button>
+              </div>
+            </div>
+
+            <!-- Server Backups Table -->
+            <div class="table-responsive" style="max-height: 240px; overflow-y: auto;">
+              <table class="data-table" style="font-size: 0.84rem;">
+                <thead>
+                  <tr>
+                    <th>Filename</th>
+                    <th>Type</th>
+                    <th>Size</th>
+                    <th>Created (UTC)</th>
+                    <th style="text-align: right;">Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="serverBackupsTableBody">
+                  <tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 1.25rem;">Loading server backups...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- 2. Client Device (Browser Download & Upload) -->
+          <div class="grid-cols-2" style="gap: 1rem; margin-bottom: 1.5rem;">
+            <!-- Download to Device -->
+            <div style="background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 1.15rem; display: flex; flex-direction: column; justify-content: space-between;">
+              <div>
+                <strong style="font-size: 0.95rem; color: var(--text-primary); display: block; margin-bottom: 0.35rem;">Download to This Device</strong>
+                <p style="font-size: 0.8rem; color: var(--text-secondary); line-height: 1.4; margin-bottom: 1rem;">
+                  Export an immediate, hot snapshot of your entire database directly to your phone, tablet, or PC browser downloads.
+                </p>
+              </div>
+              <button type="button" class="btn btn-secondary" style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 0.5rem;" onclick="app.downloadLiveBackup()">
+                <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                Download Live Database (.db)
+              </button>
+            </div>
+
+            <!-- Restore from Device Upload -->
+            <div style="background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 1.15rem; display: flex; flex-direction: column; justify-content: space-between;">
+              <div>
+                <strong style="font-size: 0.95rem; color: var(--text-primary); display: block; margin-bottom: 0.35rem;">Restore from This Device</strong>
+                <p style="font-size: 0.8rem; color: var(--text-secondary); line-height: 1.4; margin-bottom: 0.75rem;">
+                  Upload a <code>.db</code> backup file from this computer or phone to restore all clinical logs and settings.
+                </p>
+                <div class="form-group" style="margin-bottom: 0.85rem;">
+                  <input id="backupFileInput" type="file" accept=".db,.sqlite,.sqlite3" class="form-input" style="padding: 0.45rem; font-size: 0.82rem;" onchange="app.onBackupFileSelected(this)">
+                </div>
+              </div>
+              <button id="btnUploadRestore" type="button" class="btn btn-secondary" style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 0.5rem;" disabled onclick="app.openRestoreUploadModal()">
+                <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                Upload & Restore Backup
+              </button>
+            </div>
+          </div>
+
           <!-- Danger Zone: Wipe Clinical Data & Delete Account -->
           <div style="margin-top: 2.5rem; border-top: 1px solid var(--border-subtle); padding-top: 1.5rem;">
             <h4 style="color: var(--color-hypo); font-size: 0.95rem; margin-bottom: 0.4rem;">Danger Zone: Wipe Local Clinical Data</h4>
@@ -989,6 +1069,119 @@
         <div style="display: flex; gap: 0.75rem; margin-top: 1rem;">
           <button type="button" class="btn btn-secondary" style="flex: 1;" onclick="app.closeModal('wipeDataModal')">Cancel</button>
           <button type="submit" class="btn btn-danger" style="flex: 1;">Confirm & Wipe Data</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal: Restore Server Host Backup -->
+  <div id="restoreServerModal" class="modal-overlay subtle-blur">
+    <div class="modal-card" style="border-color: rgba(14, 165, 233, 0.6); max-width: 500px;">
+      <button class="modal-close-btn" onclick="app.closeModal('restoreServerModal')">&times;</button>
+      
+      <div style="text-align: center; margin-bottom: 1.25rem;">
+        <span class="pill" style="color: var(--accent-primary); border-color: rgba(14, 165, 233, 0.4);">DATABASE RESTORE</span>
+        <h3 style="font-size: 1.3rem; font-weight: 700; color: #ffffff; margin-top: 0.5rem;">Restore Server Backup</h3>
+      </div>
+
+      <div style="background: rgba(14, 165, 233, 0.08); border: 1px solid var(--border-highlight); border-radius: var(--radius-md); padding: 1rem; margin-bottom: 1.15rem; font-size: 0.85rem; color: var(--text-secondary); line-height: 1.45;">
+        <div><b>Backup File:</b> <code id="restoreServerFileName" style="color: var(--accent-primary);">--</code></div>
+        <div id="restoreServerMetaRow" style="margin-top: 0.35rem; font-size: 0.78rem; color: var(--text-muted);"></div>
+        <div style="margin-top: 0.65rem; color: #fbbf24; font-size: 0.82rem;">
+          ⚠️ <b>Note:</b> Restoring will replace your current medical history with this backup. An automatic safety snapshot will be created on the server host first.
+        </div>
+      </div>
+
+      <div id="restoreServerErrorBanner" style="display: none; background: rgba(239, 68, 68, 0.2); border: 1px solid #ef4444; border-radius: var(--radius-sm); padding: 0.75rem; color: #fca5a5; font-size: 0.85rem; margin-bottom: 1rem;"></div>
+
+      <form onsubmit="event.preventDefault(); app.executeRestoreServer();">
+        <div class="form-group" id="restoreServerPasswordGroup">
+          <label class="form-label">To proceed, enter your Master Password:</label>
+          <div class="password-input-wrap">
+            <input id="restoreServerPasswordInput" type="password" class="form-input" placeholder="Master password..." required autofocus>
+            <button type="button" class="password-toggle-btn" onclick="app.togglePasswordVisibility('restoreServerPasswordInput', this)" title="Show / Hide password">
+              <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <div style="display: flex; gap: 0.75rem; margin-top: 1.25rem;">
+          <button type="button" class="btn btn-secondary" style="flex: 1;" onclick="app.closeModal('restoreServerModal')">Cancel</button>
+          <button id="btnConfirmRestoreServer" type="submit" class="btn btn-primary" style="flex: 1.5;">Confirm & Restore</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal: Restore Uploaded Client Backup -->
+  <div id="restoreUploadModal" class="modal-overlay subtle-blur">
+    <div class="modal-card" style="border-color: rgba(16, 185, 129, 0.6); max-width: 500px;">
+      <button class="modal-close-btn" onclick="app.closeModal('restoreUploadModal')">&times;</button>
+      
+      <div style="text-align: center; margin-bottom: 1.25rem;">
+        <span class="pill" style="color: var(--color-target); border-color: rgba(16, 185, 129, 0.4);">DEVICE BACKUP RESTORE</span>
+        <h3 style="font-size: 1.3rem; font-weight: 700; color: #ffffff; margin-top: 0.5rem;">Restore Uploaded Backup</h3>
+      </div>
+
+      <div style="background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.3); border-radius: var(--radius-md); padding: 1rem; margin-bottom: 1.15rem; font-size: 0.85rem; color: var(--text-secondary); line-height: 1.45;">
+        <div><b>File to Upload:</b> <code id="restoreUploadFileName" style="color: var(--color-target);">--</code></div>
+        <div id="restoreUploadMetaRow" style="margin-top: 0.35rem; font-size: 0.78rem; color: var(--text-muted);"></div>
+        <div style="margin-top: 0.65rem; color: #fbbf24; font-size: 0.82rem;">
+          ⚠️ <b>Note:</b> The server will validate this file and replace your current database with it. A safety snapshot will be taken on the server host first.
+        </div>
+      </div>
+
+      <div id="restoreUploadErrorBanner" style="display: none; background: rgba(239, 68, 68, 0.2); border: 1px solid #ef4444; border-radius: var(--radius-sm); padding: 0.75rem; color: #fca5a5; font-size: 0.85rem; margin-bottom: 1rem;"></div>
+
+      <form onsubmit="event.preventDefault(); app.executeRestoreUpload();">
+        <div class="form-group" id="restoreUploadPasswordGroup">
+          <label class="form-label">To proceed, enter your Master Password:</label>
+          <div class="password-input-wrap">
+            <input id="restoreUploadPasswordInput" type="password" class="form-input" placeholder="Master password..." required autofocus>
+            <button type="button" class="password-toggle-btn" onclick="app.togglePasswordVisibility('restoreUploadPasswordInput', this)" title="Show / Hide password">
+              <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <div style="display: flex; gap: 0.75rem; margin-top: 1.25rem;">
+          <button type="button" class="btn btn-secondary" style="flex: 1;" onclick="app.closeModal('restoreUploadModal')">Cancel</button>
+          <button id="btnConfirmRestoreUpload" type="submit" class="btn btn-primary" style="flex: 1.5;">Confirm & Restore</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal: Delete Server Backup -->
+  <div id="deleteBackupModal" class="modal-overlay subtle-blur">
+    <div class="modal-card" style="border-color: rgba(239, 68, 68, 0.6); max-width: 480px;">
+      <button class="modal-close-btn" onclick="app.closeModal('deleteBackupModal')">&times;</button>
+      
+      <div style="text-align: center; margin-bottom: 1.25rem;">
+        <span class="pill" style="color: var(--color-hypo); border-color: rgba(239, 68, 68, 0.4);">DELETE BACKUP</span>
+        <h3 style="font-size: 1.3rem; font-weight: 700; color: #ffffff; margin-top: 0.5rem;">Delete Server Backup</h3>
+      </div>
+
+      <div style="background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: var(--radius-md); padding: 1rem; margin-bottom: 1.15rem; font-size: 0.85rem; color: #fca5a5; line-height: 1.45;">
+        Are you sure you want to permanently delete backup <code id="deleteBackupFileName" style="color: #ffffff;">--</code> from the host server?
+      </div>
+
+      <div id="deleteBackupErrorBanner" style="display: none; background: rgba(239, 68, 68, 0.2); border: 1px solid #ef4444; border-radius: var(--radius-sm); padding: 0.75rem; color: #fca5a5; font-size: 0.85rem; margin-bottom: 1rem;"></div>
+
+      <form onsubmit="event.preventDefault(); app.executeDeleteBackup();">
+        <div class="form-group" id="deleteBackupPasswordGroup">
+          <label class="form-label">Master Password (if required):</label>
+          <div class="password-input-wrap">
+            <input id="deleteBackupPasswordInput" type="password" class="form-input" placeholder="Master password...">
+            <button type="button" class="password-toggle-btn" onclick="app.togglePasswordVisibility('deleteBackupPasswordInput', this)" title="Show / Hide password">
+              <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <div style="display: flex; gap: 0.75rem; margin-top: 1.25rem;">
+          <button type="button" class="btn btn-secondary" style="flex: 1;" onclick="app.closeModal('deleteBackupModal')">Cancel</button>
+          <button id="btnConfirmDeleteBackup" type="submit" class="btn btn-danger" style="flex: 1.5;">Delete Backup</button>
         </div>
       </form>
     </div>

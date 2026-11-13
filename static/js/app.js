@@ -952,6 +952,9 @@ class GlycoApp {
     if (subTabId === 'audit') {
       this.fetchAuditLogs();
     }
+    if (subTabId === 'themes') {
+      this.fetchServerBackups();
+    }
   }
 
   // Birth Date & Age Calculator
@@ -1737,6 +1740,364 @@ class GlycoApp {
       if (btn) {
         btn.disabled = false;
         btn.textContent = 'Update Now';
+      }
+    }
+  }
+
+  // ==========================================
+  // Data Backup & Restore Hub
+  // ==========================================
+  escapeHtml(str) {
+    if (str === null || str === undefined) return '';
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+  }
+
+  formatBytes(bytes) {
+    if (!bytes || bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return (bytes / Math.pow(k, i)).toFixed(1) + ' ' + sizes[i];
+  }
+
+  async fetchServerBackups() {
+    const tbody = document.getElementById('serverBackupsTableBody');
+    if (!tbody) return;
+
+    try {
+      const res = await fetch('/api/system/backups');
+      const data = await res.json();
+      if (!res.ok) {
+        tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: #fca5a5; padding: 1.25rem;">Failed to load backups: ${this.escapeHtml(data.error || 'Server error')}</td></tr>`;
+        return;
+      }
+
+      const backups = data.backups || [];
+      this._serverBackups = backups;
+
+      if (backups.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 1.25rem;">No server backups found. Click "Save Backup on Server" above to create one.</td></tr>`;
+        return;
+      }
+
+      tbody.innerHTML = backups.map(b => {
+        let badgeColor = 'var(--accent-primary)';
+        let badgeBg = 'rgba(14, 165, 233, 0.12)';
+        let badgeBorder = 'rgba(14, 165, 233, 0.3)';
+        if (b.kind && (b.kind.includes('Pre-Restore') || b.kind.includes('Safety'))) {
+          badgeColor = '#fbbf24';
+          badgeBg = 'rgba(251, 191, 36, 0.12)';
+          badgeBorder = 'rgba(251, 191, 36, 0.3)';
+        } else if (b.kind && b.kind.includes('Uploaded')) {
+          badgeColor = 'var(--color-target)';
+          badgeBg = 'rgba(16, 185, 129, 0.12)';
+          badgeBorder = 'rgba(16, 185, 129, 0.3)';
+        }
+
+        const safeFilename = this.escapeHtml(b.filename);
+        const safeSize = this.escapeHtml(b.size_formatted);
+        const safeCreated = this.escapeHtml(b.created_at);
+        const argFilename = encodeURIComponent(b.filename);
+
+        return `
+          <tr>
+            <td style="font-family: monospace; font-size: 0.8rem; color: var(--text-primary);">${safeFilename}</td>
+            <td><span class="pill" style="color: ${badgeColor}; background: ${badgeBg}; border-color: ${badgeBorder}; font-size: 0.7rem; padding: 0.15rem 0.5rem;">${this.escapeHtml(b.kind)}</span></td>
+            <td style="color: var(--text-muted); font-size: 0.8rem;">${safeSize}</td>
+            <td style="color: var(--text-muted); font-size: 0.8rem;">${safeCreated}</td>
+            <td style="text-align: right; white-space: nowrap;">
+              <button type="button" class="btn btn-secondary btn-sm" style="padding: 0.25rem 0.6rem; font-size: 0.78rem; margin-right: 0.35rem;" onclick="app.openRestoreServerModal('${argFilename}')" title="Restore this backup">
+                Restore
+              </button>
+              <button type="button" class="btn btn-secondary btn-sm" style="padding: 0.25rem 0.6rem; font-size: 0.78rem; margin-right: 0.35rem;" onclick="app.downloadServerBackup('${argFilename}')" title="Download backup file">
+                Download
+              </button>
+              <button type="button" class="btn btn-danger btn-sm" style="padding: 0.25rem 0.55rem; font-size: 0.78rem;" onclick="app.openDeleteBackupModal('${argFilename}')" title="Delete backup">
+                Delete
+              </button>
+            </td>
+          </tr>
+        `;
+      }).join('');
+    } catch (e) {
+      console.error('Failed to load server backups:', e);
+      tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: #fca5a5; padding: 1.25rem;">Error loading backups: ${this.escapeHtml(e.message)}</td></tr>`;
+    }
+  }
+
+  async createServerBackup() {
+    try {
+      this.showToast('Creating server backup...', 'info');
+      const res = await fetch('/api/system/backups/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prefix: 'glycoguide_backup' })
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        this.showToast(data.error || 'Failed to create backup.', 'danger');
+        return;
+      }
+      this.showToast(data.message || 'Server backup created successfully!', 'success');
+      await this.fetchServerBackups();
+    } catch (e) {
+      this.showToast('Error creating backup: ' + e.message, 'danger');
+    }
+  }
+
+  downloadLiveBackup() {
+    this.showToast('Generating live database snapshot...', 'info');
+    window.location.href = '/api/system/backups/download-live';
+  }
+
+  downloadServerBackup(encodedFilename) {
+    const filename = decodeURIComponent(encodedFilename);
+    window.location.href = '/api/system/backups/download/' + encodeURIComponent(filename);
+  }
+
+  openRestoreServerModal(encodedFilename) {
+    const filename = decodeURIComponent(encodedFilename);
+    const backup = (this._serverBackups || []).find(b => b.filename === filename);
+    const fileNameEl = document.getElementById('restoreServerFileName');
+    const metaRow = document.getElementById('restoreServerMetaRow');
+    const errBanner = document.getElementById('restoreServerErrorBanner');
+    const pwdInput = document.getElementById('restoreServerPasswordInput');
+
+    if (fileNameEl) fileNameEl.textContent = filename;
+    if (metaRow) {
+      metaRow.textContent = backup 
+        ? `Size: ${backup.size_formatted} · Created: ${backup.created_at} · Type: ${backup.kind}` 
+        : '';
+    }
+    if (errBanner) {
+      errBanner.textContent = '';
+      errBanner.style.display = 'none';
+    }
+    if (pwdInput) {
+      pwdInput.value = '';
+    }
+    this.openModal('restoreServerModal');
+  }
+
+  async executeRestoreServer() {
+    const filename = document.getElementById('restoreServerFileName')?.textContent?.trim();
+    const pwd = document.getElementById('restoreServerPasswordInput')?.value;
+    const errBanner = document.getElementById('restoreServerErrorBanner');
+    const btn = document.getElementById('btnConfirmRestoreServer');
+
+    if (!filename || filename === '--') {
+      if (errBanner) {
+        errBanner.textContent = 'No backup file selected.';
+        errBanner.style.display = 'block';
+      }
+      return;
+    }
+
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = 'Restoring...';
+    }
+
+    try {
+      const res = await fetch('/api/system/backups/restore-server', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filename, password: pwd })
+      });
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        if (errBanner) {
+          errBanner.textContent = data.error || 'Failed to restore database.';
+          errBanner.style.display = 'block';
+        }
+        return;
+      }
+
+      this.closeModal('restoreServerModal');
+      this.showToast(data.message || 'Database successfully restored from server backup!', 'success');
+      await this.loadProfile();
+      await this.refreshData();
+      await this.fetchServerBackups();
+    } catch (e) {
+      if (errBanner) {
+        errBanner.textContent = 'Server communication error: ' + e.message;
+        errBanner.style.display = 'block';
+      }
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = 'Confirm & Restore';
+      }
+    }
+  }
+
+  onBackupFileSelected(input) {
+    const btn = document.getElementById('btnUploadRestore');
+    if (!btn) return;
+    if (input.files && input.files.length > 0) {
+      btn.disabled = false;
+      btn.classList.remove('btn-secondary');
+      btn.classList.add('btn-primary');
+    } else {
+      btn.disabled = true;
+      btn.classList.remove('btn-primary');
+      btn.classList.add('btn-secondary');
+    }
+  }
+
+  openRestoreUploadModal() {
+    const fileInput = document.getElementById('backupFileInput');
+    if (!fileInput || !fileInput.files || fileInput.files.length === 0) {
+      this.showToast('Please select a .db backup file first.', 'warning');
+      return;
+    }
+    const file = fileInput.files[0];
+    const fileNameEl = document.getElementById('restoreUploadFileName');
+    const metaRow = document.getElementById('restoreUploadMetaRow');
+    const errBanner = document.getElementById('restoreUploadErrorBanner');
+    const pwdInput = document.getElementById('restoreUploadPasswordInput');
+
+    if (fileNameEl) fileNameEl.textContent = file.name;
+    if (metaRow) metaRow.textContent = `Size: ${this.formatBytes(file.size)} · Type: ${file.type || 'SQLite Database'}`;
+    if (errBanner) {
+      errBanner.textContent = '';
+      errBanner.style.display = 'none';
+    }
+    if (pwdInput) {
+      pwdInput.value = '';
+    }
+    this.openModal('restoreUploadModal');
+  }
+
+  async executeRestoreUpload() {
+    const fileInput = document.getElementById('backupFileInput');
+    const pwd = document.getElementById('restoreUploadPasswordInput')?.value;
+    const errBanner = document.getElementById('restoreUploadErrorBanner');
+    const btn = document.getElementById('btnConfirmRestoreUpload');
+
+    if (!fileInput || !fileInput.files || fileInput.files.length === 0) {
+      if (errBanner) {
+        errBanner.textContent = 'No file selected. Please choose a backup file.';
+        errBanner.style.display = 'block';
+      }
+      return;
+    }
+
+    const file = fileInput.files[0];
+    const formData = new FormData();
+    formData.append('backup_file', file);
+    formData.append('password', pwd || '');
+
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = 'Uploading & Restoring...';
+    }
+
+    try {
+      const res = await fetch('/api/system/backups/restore-upload', {
+        method: 'POST',
+        body: formData
+      });
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        if (errBanner) {
+          errBanner.textContent = data.error || 'Failed to restore uploaded database.';
+          errBanner.style.display = 'block';
+        }
+        return;
+      }
+
+      this.closeModal('restoreUploadModal');
+      fileInput.value = '';
+      this.onBackupFileSelected(fileInput);
+      this.showToast(data.message || 'Database restored from uploaded file!', 'success');
+      await this.loadProfile();
+      await this.refreshData();
+      await this.fetchServerBackups();
+    } catch (e) {
+      if (errBanner) {
+        errBanner.textContent = 'Upload error: ' + e.message;
+        errBanner.style.display = 'block';
+      }
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = 'Confirm & Restore';
+      }
+    }
+  }
+
+  openDeleteBackupModal(encodedFilename) {
+    const filename = decodeURIComponent(encodedFilename);
+    const fileNameEl = document.getElementById('deleteBackupFileName');
+    const errBanner = document.getElementById('deleteBackupErrorBanner');
+    const pwdInput = document.getElementById('deleteBackupPasswordInput');
+
+    if (fileNameEl) fileNameEl.textContent = filename;
+    if (errBanner) {
+      errBanner.textContent = '';
+      errBanner.style.display = 'none';
+    }
+    if (pwdInput) {
+      pwdInput.value = '';
+    }
+    this.openModal('deleteBackupModal');
+  }
+
+  async executeDeleteBackup() {
+    const filename = document.getElementById('deleteBackupFileName')?.textContent?.trim();
+    const pwd = document.getElementById('deleteBackupPasswordInput')?.value;
+    const errBanner = document.getElementById('deleteBackupErrorBanner');
+    const btn = document.getElementById('btnConfirmDeleteBackup');
+
+    if (!filename || filename === '--') {
+      if (errBanner) {
+        errBanner.textContent = 'No backup selected.';
+        errBanner.style.display = 'block';
+      }
+      return;
+    }
+
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = 'Deleting...';
+    }
+
+    try {
+      const res = await fetch('/api/system/backups/' + encodeURIComponent(filename), {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: pwd || '' })
+      });
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        if (errBanner) {
+          errBanner.textContent = data.error || 'Failed to delete backup.';
+          errBanner.style.display = 'block';
+        }
+        return;
+      }
+
+      this.closeModal('deleteBackupModal');
+      this.showToast(data.message || 'Backup deleted successfully.', 'success');
+      await this.fetchServerBackups();
+    } catch (e) {
+      if (errBanner) {
+        errBanner.textContent = 'Error: ' + e.message;
+        errBanner.style.display = 'block';
+      }
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = 'Delete Backup';
       }
     }
   }

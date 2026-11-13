@@ -15,6 +15,7 @@ import t1d_engine
 import auth_service
 import ai_service
 import update_service
+import backup_service
 
 static_dir = str(config.BUNDLE_DIR / "static")
 template_dir = str(config.BUNDLE_DIR / "templates")
@@ -570,6 +571,163 @@ def apply_update_api():
 
             threading.Thread(target=_delayed_restart, daemon=True).start()
     return jsonify(res)
+
+# --- Backup & Restore APIs ---
+@app.route("/api/system/backups", methods=["GET"])
+def get_backups_api():
+    is_valid, _ = check_auth(request)
+    if not is_valid:
+        return jsonify({"error": "Authentication required"}), 401
+    backups = backup_service.list_backups()
+    return jsonify({"success": True, "backups": backups})
+
+@app.route("/api/system/backups/create", methods=["POST"])
+def create_backup_api():
+    is_valid, _ = check_auth(request)
+    if not is_valid:
+        return jsonify({"error": "Authentication required"}), 401
+    try:
+        dest_path = backup_service.create_backup("glycoguide_backup")
+        database.add_audit_log("BACKUP_CREATED", f"Created server backup '{dest_path.name}'.")
+        return jsonify({
+            "success": True,
+            "filename": dest_path.name,
+            "message": f"Server backup '{dest_path.name}' created successfully."
+        })
+    except Exception as e:
+        return jsonify({"error": f"Failed to create backup: {str(e)}"}), 500
+
+@app.route("/api/system/backups/download/<filename>", methods=["GET"])
+def download_backup_api(filename: str):
+    is_valid, _ = check_auth(request)
+    if not is_valid:
+        return redirect("/login")
+    target = backup_service.get_backup_path(filename)
+    if not target:
+        return jsonify({"error": "Backup file not found."}), 404
+    return send_from_directory(
+        str(config.BACKUP_DIR),
+        target.name,
+        as_attachment=True,
+        download_name=target.name
+    )
+
+@app.route("/api/system/backups/download-live", methods=["GET"])
+def download_live_backup_api():
+    is_valid, _ = check_auth(request)
+    if not is_valid:
+        return redirect("/login")
+    try:
+        snapshot_path = backup_service.create_backup("live_download")
+        database.add_audit_log("BACKUP_DOWNLOADED", f"Live database snapshot downloaded ({snapshot_path.name}).")
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        download_name = f"glycoguide_backup_{ts}.db"
+        return send_from_directory(
+            str(config.BACKUP_DIR),
+            snapshot_path.name,
+            as_attachment=True,
+            download_name=download_name
+        )
+    except Exception as e:
+        return jsonify({"error": f"Failed to generate backup: {str(e)}"}), 500
+
+@app.route("/api/system/backups/restore-server", methods=["POST"])
+def restore_server_backup_api():
+    is_valid, _ = check_auth(request)
+    if not is_valid:
+        return jsonify({"error": "Authentication required"}), 401
+
+    data = request.get_json(silent=True) or {}
+    filename = data.get("filename", "")
+    password = data.get("password", "")
+
+    if auth_service.is_password_configured():
+        if not password or not auth_service.authenticate_master_password(password):
+            database.add_audit_log("SECURITY_ALERT", f"Unauthorized restore attempt for '{filename}': Incorrect password.")
+            return jsonify({"error": "Incorrect master password. Database was NOT restored."}), 403
+
+    target = backup_service.get_backup_path(filename)
+    if not target:
+        return jsonify({"error": "Backup file not found on server."}), 404
+
+    success, msg = backup_service.restore_backup(target)
+    if not success:
+        return jsonify({"error": msg}), 400
+
+    new_sess = auth_service.create_device_session()
+    database.add_audit_log("DATA_RESTORED", f"Database restored from server backup '{target.name}'.")
+
+    resp = make_response(jsonify({
+        "success": True,
+        "message": f"Successfully restored database from '{target.name}'."
+    }))
+    resp.set_cookie(config.SESSION_COOKIE_NAME, new_sess, max_age=86400*30, httponly=True, samesite=config.SESSION_COOKIE_SAMESITE)
+    return resp
+
+@app.route("/api/system/backups/restore-upload", methods=["POST"])
+def restore_uploaded_backup_api():
+    is_valid, _ = check_auth(request)
+    if not is_valid:
+        return jsonify({"error": "Authentication required"}), 401
+
+    password = request.form.get("password", "")
+    if auth_service.is_password_configured():
+        if not password or not auth_service.authenticate_master_password(password):
+            database.add_audit_log("SECURITY_ALERT", "Unauthorized restore attempt from uploaded file: Incorrect password.")
+            return jsonify({"error": "Incorrect master password. Database was NOT restored."}), 403
+
+    file = request.files.get("backup_file")
+    if not file or not file.filename:
+        return jsonify({"error": "No file was uploaded."}), 400
+
+    safe_name = os.path.basename(file.filename)
+    if not (safe_name.endswith(".db") or safe_name.endswith(".sqlite") or safe_name.endswith(".sqlite3")):
+        return jsonify({"error": "Invalid file extension. Please upload a .db, .sqlite, or .sqlite3 file."}), 400
+
+    config.BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+    ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    saved_archive_path = config.BACKUP_DIR / f"uploaded_{ts}_{safe_name}"
+
+    try:
+        file.save(str(saved_archive_path))
+    except Exception as e:
+        return jsonify({"error": f"Failed to save uploaded file: {str(e)}"}), 500
+
+    success, msg = backup_service.restore_backup(saved_archive_path)
+    if not success:
+        try:
+            saved_archive_path.unlink()
+        except Exception:
+            pass
+        return jsonify({"error": msg}), 400
+
+    new_sess = auth_service.create_device_session()
+    database.add_audit_log("DATA_RESTORED", f"Database restored from uploaded file '{safe_name}'.")
+
+    resp = make_response(jsonify({
+        "success": True,
+        "message": f"Successfully restored database from uploaded file '{safe_name}'."
+    }))
+    resp.set_cookie(config.SESSION_COOKIE_NAME, new_sess, max_age=86400*30, httponly=True, samesite=config.SESSION_COOKIE_SAMESITE)
+    return resp
+
+@app.route("/api/system/backups/<filename>", methods=["DELETE"])
+def delete_backup_api(filename: str):
+    is_valid, _ = check_auth(request)
+    if not is_valid:
+        return jsonify({"error": "Authentication required"}), 401
+
+    data = request.get_json(silent=True) or {}
+    password = data.get("password", "")
+    if auth_service.is_password_configured():
+        if not password or not auth_service.authenticate_master_password(password):
+            return jsonify({"error": "Incorrect master password. Backup was NOT deleted."}), 403
+
+    success = backup_service.delete_backup(filename)
+    if success:
+        database.add_audit_log("BACKUP_DELETED", f"Deleted server backup file '{filename}'.")
+        return jsonify({"success": True, "message": f"Deleted backup '{filename}'."})
+    return jsonify({"error": "Backup file not found or could not be deleted."}), 404
 
 @app.route("/api/system/clear-data", methods=["POST"])
 def clear_data_api():

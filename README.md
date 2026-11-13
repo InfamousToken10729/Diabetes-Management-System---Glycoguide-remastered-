@@ -99,4 +99,8 @@ To access GlycoGuide from your smartphone anywhere in the world:
 * **Rule of 15 Hypo Rescue**: Auto-triggered full-screen rescue protocol with persistent 15-minute countdown timer, audio alerts, fast-carb guide, and recovery BG verification.
 * **Time In Range (TIR) & Estimated HbA1c (ADAG)**: Interpolated TIR stats, ADAG eA1c in `%` & `mmol/mol`, glycemic variability ($CV\%$), and ratio adjustment insights.
 * **Full-Page Security & Audit Logs**: Master password gatekeeping, auto-lock after 15 minutes of inactivity, activity audit trail, and safe auto-update checks every hour.
+* **Data Backup & Restore Hub**:
+  * **Host Server Backups**: Save timestamped SQLite database backups directly on the server machine (e.g. Raspberry Pi or local PC) with 1 click.
+  * **Client Device Download**: Download an instant hot `.db` snapshot straight to your phone, tablet, or PC browser downloads.
+  * **Restore from Server or Device**: Restore from existing server backups or upload a `.db` backup from your phone/PC with automatic pre-restore safety snapshots and master password verification.
 * **5 Modern Color Themes & Printable Doctor Reports**: Obsidian Slate, Obsidian Emerald, Midnight Sunset, Cyber Synth, and Polar Light, plus 1-click CSV & Doctor Report exports.

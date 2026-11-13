@@ -6,14 +6,19 @@ import tempfile
 from datetime import datetime, timezone
 import config
 
-# Isolate test database from real user data
+from pathlib import Path
+
+# Isolate test database and backups from real user data
 test_tmp_dir = tempfile.mkdtemp()
-config.DB_PATH = os.path.join(test_tmp_dir, "test_glycoguide.db")
+config.DB_PATH = Path(test_tmp_dir) / "test_glycoguide.db"
+config.BACKUP_DIR = Path(test_tmp_dir) / "test_backups"
+config.BACKUP_DIR.mkdir(parents=True, exist_ok=True)
 
 import database
 import t1d_engine
 import auth_service
 import update_service
+import backup_service
 import app
 
 def run_tests():
@@ -285,6 +290,124 @@ def run_tests():
             "git@github.com:InfamousToken10729/Diabetes-Management-System---Glycoguide-remastered-.git"
         ) == ("InfamousToken10729", "Diabetes-Management-System---Glycoguide-remastered-")
         print("[PASS] update_service parses HTTPS, .git, web URL, and SSH GitHub URLs accurately")
+
+        # Test Backup & Restore Service and APIs
+        print("--- Testing Backup & Restore Service & APIs ---")
+        
+        # 1. Validation tests
+        # Missing file
+        valid, msg = backup_service.validate_backup_database(config.BACKUP_DIR / "non_existent.db")
+        assert not valid, "Missing file should fail validation"
+
+        # Corrupt file
+        corrupt_path = config.BACKUP_DIR / "corrupt.db"
+        with open(corrupt_path, "wb") as f:
+            f.write(b"not a valid sqlite file")
+        valid, msg = backup_service.validate_backup_database(corrupt_path)
+        assert not valid, "Corrupt file should fail validation"
+        corrupt_path.unlink()
+
+        # Valid live db
+        valid, msg = backup_service.validate_backup_database(config.DB_PATH)
+        assert valid, f"Live DB should be valid: {msg}"
+        print("[PASS] backup_service.validate_backup_database validates SQLite files correctly")
+
+        # 2. Create server backup
+        backup_path = backup_service.create_backup("test_manual")
+        assert backup_path.exists()
+        valid, msg = backup_service.validate_backup_database(backup_path)
+        assert valid, "Created backup should be valid SQLite DB"
+        print(f"[PASS] backup_service created valid backup: {backup_path.name}")
+
+        # 3. List backups
+        all_backups = backup_service.list_backups()
+        assert any(b["filename"] == backup_path.name for b in all_backups)
+        print(f"[PASS] backup_service.list_backups found {len(all_backups)} backup(s)")
+
+        # 4. Path traversal protection
+        assert backup_service.get_backup_path("../secret.db") is None
+        assert backup_service.get_backup_path(backup_path.name) is not None
+        print("[PASS] Path traversal protection works as expected")
+
+        # 5. API Tests
+        # Re-authenticate client session
+        auth_service.set_master_password("TestBackupPass123")
+        client.post("/api/auth/unlock", json={"password": "TestBackupPass123"})
+
+        # GET /api/system/backups
+        resp = client.get("/api/system/backups")
+        assert resp.status_code == 200
+        data = json.loads(resp.data)
+        assert data.get("success") is True
+        assert len(data.get("backups", [])) >= 1
+        print("[PASS] GET /api/system/backups returns backup list")
+
+        # POST /api/system/backups/create
+        resp = client.post("/api/system/backups/create")
+        assert resp.status_code == 200
+        new_backup_name = json.loads(resp.data)["filename"]
+        assert (config.BACKUP_DIR / new_backup_name).exists()
+        print(f"[PASS] POST /api/system/backups/create generated {new_backup_name}")
+
+        # GET /api/system/backups/download/<filename>
+        resp = client.get(f"/api/system/backups/download/{new_backup_name}")
+        assert resp.status_code == 200
+        assert resp.data.startswith(b"SQLite format 3\000")
+        print("[PASS] GET /api/system/backups/download/<filename> streams valid SQLite database")
+
+        # GET /api/system/backups/download-live
+        resp = client.get("/api/system/backups/download-live")
+        assert resp.status_code == 200
+        assert resp.data.startswith(b"SQLite format 3\000")
+        print("[PASS] GET /api/system/backups/download-live streams live SQLite database snapshot")
+
+        # Restore from server: wrong password
+        resp = client.post("/api/system/backups/restore-server", json={"filename": new_backup_name, "password": "WrongPassword"})
+        assert resp.status_code == 403
+        print("[PASS] POST /api/system/backups/restore-server rejected wrong password (403)")
+
+        # Restore from server: correct password
+        resp = client.post("/api/system/backups/restore-server", json={"filename": new_backup_name, "password": "TestBackupPass123"})
+        assert resp.status_code == 200
+        assert json.loads(resp.data)["success"] is True
+        safety_backups = [b for b in backup_service.list_backups() if "pre_restore_" in b["filename"]]
+        assert len(safety_backups) >= 1
+        print("[PASS] POST /api/system/backups/restore-server restored DB and created safety snapshot")
+
+        # Restore from upload: invalid file
+        import io
+        fake_file = (io.BytesIO(b"garbage content not sqlite"), "test_corrupt.db")
+        resp = client.post(
+            "/api/system/backups/restore-upload",
+            data={"backup_file": fake_file, "password": "TestBackupPass123"},
+            content_type="multipart/form-data"
+        )
+        assert resp.status_code == 400
+        print("[PASS] POST /api/system/backups/restore-upload rejected corrupt file (400)")
+
+        # Restore from upload: valid file
+        with open(backup_path, "rb") as f:
+            valid_bytes = f.read()
+        valid_upload = (io.BytesIO(valid_bytes), "my_valid_backup.db")
+        resp = client.post(
+            "/api/system/backups/restore-upload",
+            data={"backup_file": valid_upload, "password": "TestBackupPass123"},
+            content_type="multipart/form-data"
+        )
+        assert resp.status_code == 200
+        assert json.loads(resp.data)["success"] is True
+        print("[PASS] POST /api/system/backups/restore-upload restored valid uploaded backup (200)")
+
+        # DELETE /api/system/backups/<filename>
+        auth_service.set_master_password("TestBackupPass123")
+        # Wrong password
+        resp = client.delete(f"/api/system/backups/{new_backup_name}", json={"password": "WrongPassword"})
+        assert resp.status_code == 403
+        # Correct password
+        resp = client.delete(f"/api/system/backups/{new_backup_name}", json={"password": "TestBackupPass123"})
+        assert resp.status_code == 200
+        assert not (config.BACKUP_DIR / new_backup_name).exists()
+        print(f"[PASS] DELETE /api/system/backups/{new_backup_name} deleted backup successfully")
 
         # Clean up test temp database
         database.factory_reset_all_data_and_accounts()
