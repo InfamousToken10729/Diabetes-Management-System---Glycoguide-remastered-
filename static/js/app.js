@@ -954,6 +954,8 @@ class GlycoApp {
     }
     if (subTabId === 'themes') {
       this.fetchServerBackups();
+      this.fetchWebAuthnCredentials();
+      this.checkWebAuthnSupport();
     }
   }
 
@@ -2098,6 +2100,294 @@ class GlycoApp {
       if (btn) {
         btn.disabled = false;
         btn.textContent = 'Delete Backup';
+      }
+    }
+  }
+
+  // ==========================================
+  // WebAuthn Biometric & Passkey Management
+  // ==========================================
+  base64UrlToBuffer(base64Url) {
+    if (!base64Url) return new ArrayBuffer(0);
+    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+    const padLen = (4 - (base64.length % 4)) % 4;
+    const padded = base64 + '='.repeat(padLen);
+    const bin = atob(padded);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return bytes.buffer;
+  }
+
+  bufferToBase64Url(buffer) {
+    if (!buffer) return '';
+    const bytes = new Uint8Array(buffer);
+    let bin = '';
+    for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+    return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  }
+
+  getAutoDeviceName() {
+    const ua = navigator.userAgent;
+    let platform = "My Device";
+    if (/iPhone/i.test(ua)) platform = "iPhone (Face ID / Touch ID)";
+    else if (/iPad/i.test(ua)) platform = "iPad (Touch ID / Face ID)";
+    else if (/Macintosh/i.test(ua)) platform = "Mac (Touch ID)";
+    else if (/Windows/i.test(ua)) platform = "Windows PC (Windows Hello)";
+    else if (/Android/i.test(ua)) platform = "Android (Fingerprint)";
+    else if (/Linux/i.test(ua)) platform = "Linux Machine";
+    return platform;
+  }
+
+  checkWebAuthnSupport() {
+    const badge = document.getElementById('biometricSupportBadge');
+    const btn = document.getElementById('btnEnrollBiometric');
+    if (!badge) return;
+
+    if (!window.PublicKeyCredential) {
+      badge.innerHTML = '<span style="color: #fca5a5;">⚠️ Biometric WebAuthn not supported by this browser</span>';
+      if (btn) btn.disabled = true;
+      return;
+    }
+
+    if (!window.isSecureContext && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+      badge.innerHTML = '<span style="color: #fbbf24;">⚠️ WebAuthn requires HTTPS or localhost</span>';
+      return;
+    }
+
+    if (PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable) {
+      PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable().then(available => {
+        if (available) {
+          badge.innerHTML = '<span style="color: var(--color-target); font-weight: 600;">✓ Biometric sensor ready (Fingerprint / Face ID / Windows Hello)</span>';
+        } else {
+          badge.innerHTML = '<span style="color: var(--accent-primary);">✓ WebAuthn / Passkeys supported</span>';
+        }
+      }).catch(() => {
+        badge.innerHTML = '<span style="color: var(--accent-primary);">✓ WebAuthn supported</span>';
+      });
+    } else {
+      badge.innerHTML = '<span style="color: var(--accent-primary);">✓ WebAuthn supported</span>';
+    }
+  }
+
+  async fetchWebAuthnCredentials() {
+    const tbody = document.getElementById('webauthnCredentialsTableBody');
+    if (!tbody) return;
+
+    try {
+      const res = await fetch('/api/auth/webauthn/credentials');
+      const data = await res.json();
+      if (!res.ok) {
+        tbody.innerHTML = `<tr><td colspan="4" style="text-align: center; color: #fca5a5; padding: 1.25rem;">Failed to load biometric passkeys: ${this.escapeHtml(data.error || 'Server error')}</td></tr>`;
+        return;
+      }
+
+      const creds = data.credentials || [];
+      this._webauthnCreds = creds;
+
+      if (creds.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="4" style="text-align: center; color: var(--text-muted); padding: 1.25rem;">No biometric devices enrolled yet. Click "Enroll This Device" above to enable fingerprint or face sign-in.</td></tr>`;
+        return;
+      }
+
+      tbody.innerHTML = creds.map(c => {
+        const safeName = this.escapeHtml(c.device_name);
+        const safeCreated = this.escapeHtml(c.created_at ? new Date(c.created_at).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '--');
+        const safeLastUsed = this.escapeHtml(c.last_used_at ? new Date(c.last_used_at).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Never');
+        const argId = encodeURIComponent(c.credential_id);
+        const argName = encodeURIComponent(c.device_name);
+
+        return `
+          <tr>
+            <td style="font-weight: 600; color: var(--text-primary);">
+              <span style="display: inline-flex; align-items: center; gap: 0.4rem;">
+                <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="color: var(--accent-primary);"><path d="M12 11c0 3.517-1.009 6.799-2.753 9.571m-3.44-2.04l.054-.09A13.916 13.916 0 008 11a4 4 0 118 0c0 1.017-.07 2.019-.203 3m-2.118 6.844A21.88 21.88 0 0015.171 17m3.839 1.132c.645-2.266.99-4.659.99-7.132A8 8 0 004.07 9"/></svg>
+                ${safeName}
+              </span>
+            </td>
+            <td style="color: var(--text-muted); font-size: 0.8rem;">${safeCreated}</td>
+            <td style="color: var(--text-muted); font-size: 0.8rem;">${safeLastUsed}</td>
+            <td style="text-align: right; white-space: nowrap;">
+              <button type="button" class="btn btn-danger btn-sm" style="padding: 0.25rem 0.55rem; font-size: 0.78rem;" onclick="app.openDeletePasskeyModal('${argId}', '${argName}')" title="Remove biometric passkey">
+                Remove
+              </button>
+            </td>
+          </tr>
+        `;
+      }).join('');
+    } catch (e) {
+      console.error('Failed to load passkeys:', e);
+      tbody.innerHTML = `<tr><td colspan="4" style="text-align: center; color: #fca5a5; padding: 1.25rem;">Error loading passkeys: ${this.escapeHtml(e.message)}</td></tr>`;
+    }
+  }
+
+  async enrollBiometricDevice() {
+    if (!window.PublicKeyCredential) {
+      this.showToast('WebAuthn biometrics is not supported on this browser.', 'warning');
+      return;
+    }
+
+    const defaultName = this.getAutoDeviceName();
+    const deviceName = prompt('Enter a friendly name for this device:', defaultName);
+    if (deviceName === null) return;
+    const finalDeviceName = deviceName.trim() || defaultName;
+
+    const btn = document.getElementById('btnEnrollBiometric');
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = 'Awaiting Sensor...';
+    }
+
+    try {
+      this.showToast('Touch your fingerprint sensor or verify with Face ID / Windows Hello...', 'info');
+
+      // 1. Get registration options
+      const optRes = await fetch('/api/auth/webauthn/register/options', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      const options = await optRes.json();
+      if (!optRes.ok || options.error) {
+        this.showToast(options.error || 'Failed to start registration.', 'danger');
+        return;
+      }
+
+      // 2. Prepare options
+      let credOptions;
+      if (PublicKeyCredential.parseCreationOptionsFromJSON) {
+        credOptions = PublicKeyCredential.parseCreationOptionsFromJSON(options);
+      } else {
+        credOptions = {
+          ...options,
+          challenge: this.base64UrlToBuffer(options.challenge),
+          user: {
+            ...options.user,
+            id: this.base64UrlToBuffer(options.user.id)
+          },
+          excludeCredentials: (options.excludeCredentials || []).map(c => ({
+            ...c,
+            id: this.base64UrlToBuffer(c.id)
+          }))
+        };
+      }
+
+      // 3. Prompt native device biometric sensor
+      const credential = await navigator.credentials.create({ publicKey: credOptions });
+      if (!credential) {
+        this.showToast('Biometric enrollment cancelled.', 'warning');
+        return;
+      }
+
+      // 4. Format credential
+      let payload;
+      if (credential.toJSON) {
+        payload = credential.toJSON();
+      } else {
+        payload = {
+          id: credential.id,
+          rawId: this.bufferToBase64Url(credential.rawId),
+          type: credential.type,
+          response: {
+            attestationObject: this.bufferToBase64Url(credential.response.attestationObject),
+            clientDataJSON: this.bufferToBase64Url(credential.response.clientDataJSON),
+            transports: credential.response.getTransports ? credential.response.getTransports() : []
+          }
+        };
+      }
+
+      // 5. Send to server for verification
+      const verifyRes = await fetch('/api/auth/webauthn/register/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ credential: payload, device_name: finalDeviceName })
+      });
+      const verifyData = await verifyRes.json();
+
+      if (verifyRes.ok && verifyData.success) {
+        this.showToast(`Biometric device "${finalDeviceName}" enrolled successfully!`, 'success');
+        await this.fetchWebAuthnCredentials();
+      } else {
+        this.showToast(verifyData.error || 'Enrollment verification failed.', 'danger');
+      }
+    } catch (e) {
+      console.warn('Biometric enrollment error:', e);
+      if (e.name === 'NotAllowedError') {
+        this.showToast('Enrollment cancelled or timed out.', 'warning');
+      } else {
+        this.showToast('Enrollment error: ' + e.message, 'danger');
+      }
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = `<svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 11c0 3.517-1.009 6.799-2.753 9.571m-3.44-2.04l.054-.09A13.916 13.916 0 008 11a4 4 0 118 0c0 1.017-.07 2.019-.203 3m-2.118 6.844A21.88 21.88 0 0015.171 17m3.839 1.132c.645-2.266.99-4.659.99-7.132A8 8 0 004.07 9"/></svg> Enroll This Device`;
+      }
+    }
+  }
+
+  openDeletePasskeyModal(encodedCredentialId, encodedDeviceName) {
+    const credId = decodeURIComponent(encodedCredentialId);
+    const devName = decodeURIComponent(encodedDeviceName);
+    const idInput = document.getElementById('deletePasskeyCredentialId');
+    const nameEl = document.getElementById('deletePasskeyDeviceName');
+    const pwdInput = document.getElementById('deletePasskeyPasswordInput');
+    const errBanner = document.getElementById('deletePasskeyErrorBanner');
+
+    if (idInput) idInput.value = credId;
+    if (nameEl) nameEl.textContent = devName;
+    if (pwdInput) pwdInput.value = '';
+    if (errBanner) {
+      errBanner.textContent = '';
+      errBanner.style.display = 'none';
+    }
+    this.openModal('deletePasskeyModal');
+  }
+
+  async executeDeletePasskey() {
+    const credId = document.getElementById('deletePasskeyCredentialId')?.value;
+    const pwd = document.getElementById('deletePasskeyPasswordInput')?.value;
+    const errBanner = document.getElementById('deletePasskeyErrorBanner');
+    const btn = document.getElementById('btnConfirmDeletePasskey');
+
+    if (!credId) {
+      if (errBanner) {
+        errBanner.textContent = 'No passkey selected.';
+        errBanner.style.display = 'block';
+      }
+      return;
+    }
+
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = 'Removing...';
+    }
+
+    try {
+      const res = await fetch('/api/auth/webauthn/credentials/' + encodeURIComponent(credId), {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: pwd || '' })
+      });
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        if (errBanner) {
+          errBanner.textContent = data.error || 'Failed to remove passkey.';
+          errBanner.style.display = 'block';
+        }
+        return;
+      }
+
+      this.closeModal('deletePasskeyModal');
+      this.showToast(data.message || 'Biometric passkey removed.', 'success');
+      await this.fetchWebAuthnCredentials();
+    } catch (e) {
+      if (errBanner) {
+        errBanner.textContent = 'Error: ' + e.message;
+        errBanner.style.display = 'block';
+      }
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = 'Remove Passkey';
       }
     }
   }

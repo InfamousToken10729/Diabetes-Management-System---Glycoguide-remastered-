@@ -19,6 +19,7 @@ import t1d_engine
 import auth_service
 import update_service
 import backup_service
+import webauthn_service
 import app
 
 def run_tests():
@@ -408,6 +409,99 @@ def run_tests():
         assert resp.status_code == 200
         assert not (config.BACKUP_DIR / new_backup_name).exists()
         print(f"[PASS] DELETE /api/system/backups/{new_backup_name} deleted backup successfully")
+
+        # Test WebAuthn Biometric & Passkey Service and APIs
+        print("--- Testing WebAuthn Biometric & Passkey Features ---")
+
+        # 1. Test database helpers for challenges
+        database.save_webauthn_challenge("test_challenge_abc", "register", "family-shared-device")
+        # Expired or wrong type
+        assert database.consume_webauthn_challenge("test_challenge_abc", "login") is None
+        # Valid challenge
+        c_record = database.consume_webauthn_challenge("test_challenge_abc", "register")
+        assert c_record is not None and c_record["challenge"] == "test_challenge_abc"
+        # Cannot be consumed twice (one-time use)
+        assert database.consume_webauthn_challenge("test_challenge_abc", "register") is None
+        print("[PASS] WebAuthn challenge storage, one-time consumption, and type verification work")
+
+        # 2. Test database helpers for credentials
+        mock_cred_id = "test_cred_id_12345"
+        mock_pub_key = b"fake_public_key_bytes"
+        saved = database.save_webauthn_credential(
+            user_id="family-shared-device",
+            credential_id=mock_cred_id,
+            public_key=mock_pub_key,
+            sign_count=1,
+            transports="internal",
+            device_name="MacBook Pro (Touch ID)"
+        )
+        assert saved is not None and saved["credential_id"] == mock_cred_id
+        assert database.count_webauthn_credentials() == 1
+        cred_list = database.list_webauthn_credentials()
+        assert len(cred_list) == 1 and cred_list[0]["device_name"] == "MacBook Pro (Touch ID)"
+
+        database.update_webauthn_credential_usage(mock_cred_id, 2)
+        updated_cred = database.get_webauthn_credential_by_id(mock_cred_id)
+        assert updated_cred["sign_count"] == 2 and updated_cred["last_used_at"] is not None
+        print("[PASS] WebAuthn credential CRUD and usage tracking work correctly")
+
+        # 3. Test RP ID extraction
+        assert webauthn_service.extract_rp_id("localhost:8081") == "localhost"
+        assert webauthn_service.extract_rp_id("raspberrypi.local:8081") == "raspberrypi.local"
+        assert webauthn_service.extract_rp_id("192.168.1.100:8081") == "192.168.1.100"
+        print("[PASS] RP ID extraction correctly handles ports, domains, and IP addresses")
+
+        # 4. API Endpoints
+        # GET /api/auth/webauthn/status
+        status_resp = client.get("/api/auth/webauthn/status")
+        assert status_resp.status_code == 200
+        status_json = json.loads(status_resp.data)
+        assert status_json["supported"] is True
+        assert status_json["has_credentials"] is True
+        assert status_json["count"] == 1
+        print("[PASS] GET /api/auth/webauthn/status accurately reports enrolled biometrics")
+
+        # Authenticate client for protected endpoints
+        auth_service.set_master_password("TestBackupPass123")
+        client.post("/api/auth/unlock", json={"password": "TestBackupPass123"})
+
+        # POST /api/auth/webauthn/register/options
+        reg_opt_resp = client.post("/api/auth/webauthn/register/options")
+        assert reg_opt_resp.status_code == 200
+        reg_opt_json = json.loads(reg_opt_resp.data)
+        assert "challenge" in reg_opt_json
+        assert "rp" in reg_opt_json and reg_opt_json["rp"]["name"] == "GlycoGuide Remastered"
+        print("[PASS] POST /api/auth/webauthn/register/options generates valid WebAuthn Level 3 creation options")
+
+        # POST /api/auth/webauthn/login/options
+        login_opt_resp = client.post("/api/auth/webauthn/login/options")
+        assert login_opt_resp.status_code == 200
+        login_opt_json = json.loads(login_opt_resp.data)
+        assert "challenge" in login_opt_json
+        assert len(login_opt_json.get("allowCredentials", [])) >= 1
+        print("[PASS] POST /api/auth/webauthn/login/options generates authentication options with allowed credentials")
+
+        # GET /api/auth/webauthn/credentials
+        creds_resp = client.get("/api/auth/webauthn/credentials")
+        assert creds_resp.status_code == 200
+        creds_json = json.loads(creds_resp.data)
+        assert len(creds_json.get("credentials", [])) == 1
+        print("[PASS] GET /api/auth/webauthn/credentials lists user's enrolled devices")
+
+        # DELETE /api/auth/webauthn/credentials/<id>
+        # Wrong password
+        del_resp = client.delete(f"/api/auth/webauthn/credentials/{mock_cred_id}", json={"password": "WrongPassword"})
+        assert del_resp.status_code == 403
+        # Correct password
+        del_resp = client.delete(f"/api/auth/webauthn/credentials/{mock_cred_id}", json={"password": "TestBackupPass123"})
+        assert del_resp.status_code == 200
+        assert database.count_webauthn_credentials() == 0
+        print("[PASS] DELETE /api/auth/webauthn/credentials enforces master password and deletes credential")
+
+        # POST /api/auth/webauthn/login/options with 0 credentials returns 404
+        empty_login_opt = client.post("/api/auth/webauthn/login/options")
+        assert empty_login_opt.status_code == 404
+        print("[PASS] POST /api/auth/webauthn/login/options cleanly handles zero enrolled credentials (404)")
 
         # Clean up test temp database
         database.factory_reset_all_data_and_accounts()

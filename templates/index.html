@@ -637,6 +637,45 @@
             </a>
           </div>
 
+          <!-- Biometric Sign-In & Passkeys Section -->
+          <h3 style="font-size: 1.05rem; color: var(--accent-primary); border-bottom: 1px solid var(--border-subtle); padding-bottom: 0.4rem; margin: 1.75rem 0 1rem 0;">
+            Biometric Sign-In &amp; Passkeys
+          </h3>
+          <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 1rem;">
+            Sign in instantly using your device's built-in biometric sensor (such as <b>Fingerprint</b>, <b>Face ID</b>, <b>Touch ID</b>, or <b>Windows Hello</b>) without typing your master password every time.
+          </p>
+
+          <div style="background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 1.15rem; margin-bottom: 1.25rem;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; gap: 0.75rem;">
+              <div>
+                <strong style="font-size: 0.95rem; color: var(--text-primary); display: block;">Registered Biometric Devices</strong>
+                <span id="biometricSupportBadge" style="font-size: 0.78rem; color: var(--text-muted);">Checking browser WebAuthn support...</span>
+              </div>
+              <button id="btnEnrollBiometric" type="button" class="btn btn-primary btn-sm" onclick="app.enrollBiometricDevice()">
+                <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                  <path d="M12 11c0 3.517-1.009 6.799-2.753 9.571m-3.44-2.04l.054-.09A13.916 13.916 0 008 11a4 4 0 118 0c0 1.017-.07 2.019-.203 3m-2.118 6.844A21.88 21.88 0 0015.171 17m3.839 1.132c.645-2.266.99-4.659.99-7.132A8 8 0 004.07 9"/>
+                </svg>
+                Enroll This Device
+              </button>
+            </div>
+
+            <div class="table-responsive" style="max-height: 220px; overflow-y: auto;">
+              <table class="data-table" style="font-size: 0.84rem;">
+                <thead>
+                  <tr>
+                    <th>Device / Passkey Name</th>
+                    <th>Enrolled (UTC)</th>
+                    <th>Last Used (UTC)</th>
+                    <th style="text-align: right;">Action</th>
+                  </tr>
+                </thead>
+                <tbody id="webauthnCredentialsTableBody">
+                  <tr><td colspan="4" style="text-align: center; color: var(--text-muted); padding: 1.25rem;">Loading biometric passkeys...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
           <!-- Data Backup & Restore Hub -->
           <h3 style="font-size: 1.05rem; color: var(--accent-primary); border-bottom: 1px solid var(--border-subtle); padding-bottom: 0.4rem; margin: 1.75rem 0 1rem 0;">
             Data Backup & Restore
@@ -1182,6 +1221,42 @@
         <div style="display: flex; gap: 0.75rem; margin-top: 1.25rem;">
           <button type="button" class="btn btn-secondary" style="flex: 1;" onclick="app.closeModal('deleteBackupModal')">Cancel</button>
           <button id="btnConfirmDeleteBackup" type="submit" class="btn btn-danger" style="flex: 1.5;">Delete Backup</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal: Delete Biometric Passkey -->
+  <div id="deletePasskeyModal" class="modal-overlay subtle-blur">
+    <div class="modal-card" style="border-color: rgba(239, 68, 68, 0.6); max-width: 480px;">
+      <button class="modal-close-btn" onclick="app.closeModal('deletePasskeyModal')">&times;</button>
+      
+      <div style="text-align: center; margin-bottom: 1.25rem;">
+        <span class="pill" style="color: var(--color-hypo); border-color: rgba(239, 68, 68, 0.4);">REMOVE PASSKEY</span>
+        <h3 style="font-size: 1.3rem; font-weight: 700; color: #ffffff; margin-top: 0.5rem;">Remove Biometric Device</h3>
+      </div>
+
+      <div style="background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: var(--radius-md); padding: 1rem; margin-bottom: 1.15rem; font-size: 0.85rem; color: #fca5a5; line-height: 1.45;">
+        Are you sure you want to remove biometric passkey <code id="deletePasskeyDeviceName" style="color: #ffffff;">--</code>? This device will no longer be able to sign in via biometric scan until re-enrolled.
+      </div>
+
+      <div id="deletePasskeyErrorBanner" style="display: none; background: rgba(239, 68, 68, 0.2); border: 1px solid #ef4444; border-radius: var(--radius-sm); padding: 0.75rem; color: #fca5a5; font-size: 0.85rem; margin-bottom: 1rem;"></div>
+
+      <form onsubmit="event.preventDefault(); app.executeDeletePasskey();">
+        <input type="hidden" id="deletePasskeyCredentialId">
+        <div class="form-group" id="deletePasskeyPasswordGroup">
+          <label class="form-label">Master Password (if configured):</label>
+          <div class="password-input-wrap">
+            <input id="deletePasskeyPasswordInput" type="password" class="form-input" placeholder="Master password...">
+            <button type="button" class="password-toggle-btn" onclick="app.togglePasswordVisibility('deletePasskeyPasswordInput', this)" title="Show / Hide password">
+              <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <div style="display: flex; gap: 0.75rem; margin-top: 1.25rem;">
+          <button type="button" class="btn btn-secondary" style="flex: 1;" onclick="app.closeModal('deletePasskeyModal')">Cancel</button>
+          <button id="btnConfirmDeletePasskey" type="submit" class="btn btn-danger" style="flex: 1.5;">Remove Passkey</button>
         </div>
       </form>
     </div>

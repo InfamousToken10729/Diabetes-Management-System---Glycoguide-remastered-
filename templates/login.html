@@ -231,6 +231,21 @@
         </div>
       </div>
 
+      <!-- Biometric / Passkey Unlock (Shown when device credentials exist) -->
+      <div id="biometricLoginSection" style="display: none; margin-bottom: 1.25rem;">
+        <button id="btnBiometricSignIn" type="button" class="btn btn-secondary btn-lg" style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 0.75rem; border-color: rgba(14, 165, 233, 0.4); background: rgba(14, 165, 233, 0.08); padding: 0.85rem;" onclick="handleBiometricSignIn()">
+          <svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path d="M12 11c0 3.517-1.009 6.799-2.753 9.571m-3.44-2.04l.054-.09A13.916 13.916 0 008 11a4 4 0 118 0c0 1.017-.07 2.019-.203 3m-2.118 6.844A21.88 21.88 0 0015.171 17m3.839 1.132c.645-2.266.99-4.659.99-7.132A8 8 0 004.07 9"/>
+          </svg>
+          <span id="btnBiometricText" style="font-weight: 600; color: var(--accent-primary);">Sign in with Fingerprint / Face ID</span>
+        </button>
+        <div style="display: flex; align-items: center; gap: 0.75rem; margin: 1.25rem 0 0.5rem 0;">
+          <div style="flex: 1; height: 1px; background: var(--border-subtle);"></div>
+          <span style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em;">Or Master Password</span>
+          <div style="flex: 1; height: 1px; background: var(--border-subtle);"></div>
+        </div>
+      </div>
+
       <form onsubmit="event.preventDefault(); handleSignIn();">
         <div class="form-group">
           <label class="form-label">Master Password</label>
@@ -381,6 +396,120 @@
     const INITIAL_MODE = "{{ mode or '' }}";
     const INITIAL_REASON = "{{ reason or '' }}";
     const PWD_CONFIGURED = {{ 'true' if password_configured else 'false' }};
+    const HAS_BIOMETRICS_SERVER = {{ 'true' if has_biometrics else 'false' }};
+
+    // Base64URL and WebAuthn Buffer Helpers
+    function base64UrlToBuffer(base64Url) {
+      if (!base64Url) return new ArrayBuffer(0);
+      const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+      const padLen = (4 - (base64.length % 4)) % 4;
+      const padded = base64 + '='.repeat(padLen);
+      const bin = atob(padded);
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      return bytes.buffer;
+    }
+
+    function bufferToBase64Url(buffer) {
+      if (!buffer) return '';
+      const bytes = new Uint8Array(buffer);
+      let bin = '';
+      for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+      return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    }
+
+    async function handleBiometricSignIn() {
+      hideAlert();
+      const btn = document.getElementById('btnBiometricSignIn');
+      const textSpan = document.getElementById('btnBiometricText');
+
+      if (!window.PublicKeyCredential) {
+        showAlert('Biometric WebAuthn is not supported by this browser.', 'warning');
+        return;
+      }
+
+      if (btn) btn.disabled = true;
+      if (textSpan) textSpan.textContent = 'Waiting for Fingerprint / Face ID...';
+
+      try {
+        // 1. Fetch authentication options from server
+        const res = await fetch('/api/auth/webauthn/login/options', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' }
+        });
+        const options = await res.json();
+        if (!res.ok || options.error) {
+          showAlert(options.error || 'Failed to initialize biometric sign-in.', 'warning');
+          return;
+        }
+
+        // 2. Prepare options for navigator.credentials.get
+        let credOptions;
+        if (PublicKeyCredential.parseRequestOptionsFromJSON) {
+          credOptions = PublicKeyCredential.parseRequestOptionsFromJSON(options);
+        } else {
+          credOptions = {
+            ...options,
+            challenge: base64UrlToBuffer(options.challenge),
+            allowCredentials: (options.allowCredentials || []).map(c => ({
+              ...c,
+              id: base64UrlToBuffer(c.id)
+            }))
+          };
+        }
+
+        // 3. Prompt device biometric authenticator (Touch ID, Face ID, Windows Hello, Fingerprint)
+        const assertion = await navigator.credentials.get({ publicKey: credOptions });
+        if (!assertion) {
+          showAlert('No biometric credentials returned.', 'warning');
+          return;
+        }
+
+        // 4. Format assertion payload for server verification
+        let credentialPayload;
+        if (assertion.toJSON) {
+          credentialPayload = assertion.toJSON();
+        } else {
+          credentialPayload = {
+            id: assertion.id,
+            rawId: bufferToBase64Url(assertion.rawId),
+            type: assertion.type,
+            response: {
+              authenticatorData: bufferToBase64Url(assertion.response.authenticatorData),
+              clientDataJSON: bufferToBase64Url(assertion.response.clientDataJSON),
+              signature: bufferToBase64Url(assertion.response.signature),
+              userHandle: assertion.response.userHandle ? bufferToBase64Url(assertion.response.userHandle) : null
+            }
+          };
+        }
+
+        // 5. Verify assertion on server
+        if (textSpan) textSpan.textContent = 'Verifying Biometric Passkey...';
+        const verifyRes = await fetch('/api/auth/webauthn/login/verify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ credential: credentialPayload })
+        });
+        const verifyData = await verifyRes.json();
+
+        if (verifyRes.ok && verifyData.success) {
+          if (textSpan) textSpan.textContent = 'Authenticated! Loading Dashboard...';
+          window.location.href = verifyData.redirect || '/';
+        } else {
+          showAlert(verifyData.error || 'Biometric authentication failed. Please enter your password.', 'error');
+        }
+      } catch (e) {
+        console.warn('Biometric login error:', e);
+        if (e.name === 'NotAllowedError') {
+          showAlert('Biometric prompt was cancelled or timed out. You can enter your master password below.', 'warning');
+        } else {
+          showAlert('Biometric authentication error: ' + e.message, 'warning');
+        }
+      } finally {
+        if (btn) btn.disabled = false;
+        if (textSpan) textSpan.textContent = 'Sign in with Fingerprint / Face ID';
+      }
+    }
 
     function showAlert(msg, type = 'error') {
       const banner = document.getElementById('authAlertBanner');
@@ -567,6 +696,22 @@
           showAlert('Session locked after 15 minutes of inactivity.', 'warning');
         } else if (INITIAL_REASON === 'signedout') {
           showAlert('Signed out successfully. Device session locked.', 'info');
+        }
+
+        // Show biometric unlock if supported and enrolled
+        if (window.PublicKeyCredential) {
+          if (HAS_BIOMETRICS_SERVER) {
+            const bioSection = document.getElementById('biometricLoginSection');
+            if (bioSection) bioSection.style.display = 'block';
+          } else {
+            // Check status asynchronously in case credentials were added recently
+            fetch('/api/auth/webauthn/status').then(r => r.json()).then(data => {
+              if (data && data.has_credentials) {
+                const bioSection = document.getElementById('biometricLoginSection');
+                if (bioSection) bioSection.style.display = 'block';
+              }
+            }).catch(() => {});
+          }
         }
       } else {
         switchView('setup');

@@ -16,6 +16,7 @@ import auth_service
 import ai_service
 import update_service
 import backup_service
+import webauthn_service
 
 static_dir = str(config.BUNDLE_DIR / "static")
 template_dir = str(config.BUNDLE_DIR / "templates")
@@ -71,7 +72,8 @@ def login_page():
         mode=mode,
         reason=reason,
         display_name=main_user.get("display_name") or prof.get("username") or "Main Account",
-        password_configured=auth_service.is_password_configured()
+        password_configured=auth_service.is_password_configured(),
+        has_biometrics=database.count_webauthn_credentials() > 0
     )
 
 @app.route("/setup")
@@ -118,13 +120,15 @@ def auth_status():
     main_user = database.get_main_user() or {}
     has_rec = bool(main_user.get("recovery_key_hash"))
     display_name = main_user.get("display_name") or "Main Account"
+    has_biometrics = database.count_webauthn_credentials() > 0
     return jsonify({
         "password_configured": is_set,
         "is_authenticated": is_valid,
         "has_recovery_key": has_rec,
         "display_name": display_name,
         "inactivity_reason": reason,
-        "timeout_seconds": config.INACTIVITY_TIMEOUT_SECONDS
+        "timeout_seconds": config.INACTIVITY_TIMEOUT_SECONDS,
+        "has_biometrics": has_biometrics
     })
 
 @app.route("/api/auth/unlock", methods=["POST"])
@@ -258,6 +262,157 @@ def auth_logout():
     resp = make_response(jsonify({"success": True}))
     resp.delete_cookie(config.SESSION_COOKIE_NAME)
     return resp
+
+# --- WebAuthn Biometric & Passkey APIs ---
+@app.route("/api/auth/webauthn/status", methods=["GET"])
+def webauthn_status_api():
+    rp_id = webauthn_service.extract_rp_id(request.host)
+    count = database.count_webauthn_credentials()
+    return jsonify({
+        "supported": True,
+        "has_credentials": count > 0,
+        "count": count,
+        "rp_id": rp_id
+    })
+
+@app.route("/api/auth/webauthn/register/options", methods=["POST"])
+def webauthn_register_options_api():
+    is_valid, _ = check_auth(request)
+    if not is_valid:
+        return jsonify({"error": "Authentication required to register biometrics."}), 401
+
+    rp_id = webauthn_service.extract_rp_id(request.host)
+    main_user = database.get_main_user() or {}
+    username = main_user.get("display_name") or "Main User"
+    user_id = "family-shared-device"
+
+    try:
+        options = webauthn_service.generate_registration_options(
+            user_id_str=user_id,
+            username=username,
+            display_name=username,
+            rp_id=rp_id
+        )
+        return jsonify(options)
+    except Exception as e:
+        return jsonify({"error": f"Failed to generate registration options: {str(e)}"}), 500
+
+@app.route("/api/auth/webauthn/register/verify", methods=["POST"])
+def webauthn_register_verify_api():
+    is_valid, _ = check_auth(request)
+    if not is_valid:
+        return jsonify({"error": "Authentication required to register biometrics."}), 401
+
+    data = request.get_json(silent=True) or {}
+    credential = data.get("credential")
+    device_name = data.get("device_name") or "Biometric Device"
+
+    if not credential:
+        return jsonify({"error": "Missing biometric credential payload."}), 400
+
+    rp_id = webauthn_service.extract_rp_id(request.host)
+    allowed_origins = webauthn_service.get_allowed_origins(request)
+
+    success, msg, cred = webauthn_service.verify_registration(
+        credential_data=credential,
+        rp_id=rp_id,
+        allowed_origins=allowed_origins,
+        device_name=device_name,
+        user_id_str="family-shared-device"
+    )
+
+    if success and cred:
+        database.add_audit_log("WEBAUTHN_REGISTERED", f"Enrolled biometric device / passkey: '{device_name}'.")
+        return jsonify({
+            "success": True,
+            "message": msg,
+            "credential": {
+                "id": cred["id"],
+                "credential_id": cred["credential_id"],
+                "device_name": cred["device_name"],
+                "created_at": cred["created_at"]
+            }
+        })
+    else:
+        return jsonify({"error": msg}), 400
+
+@app.route("/api/auth/webauthn/login/options", methods=["POST"])
+def webauthn_login_options_api():
+    rp_id = webauthn_service.extract_rp_id(request.host)
+    count = database.count_webauthn_credentials()
+    if count == 0:
+        return jsonify({"error": "No biometric passkeys enrolled on this system. Please log in with your master password first."}), 404
+
+    try:
+        options = webauthn_service.generate_authentication_options(
+            rp_id=rp_id,
+            user_id_str="family-shared-device"
+        )
+        return jsonify(options)
+    except Exception as e:
+        return jsonify({"error": f"Failed to generate authentication options: {str(e)}"}), 500
+
+@app.route("/api/auth/webauthn/login/verify", methods=["POST"])
+def webauthn_login_verify_api():
+    data = request.get_json(silent=True) or {}
+    credential = data.get("credential")
+
+    if not credential:
+        return jsonify({"error": "Missing biometric assertion."}), 400
+
+    rp_id = webauthn_service.extract_rp_id(request.host)
+    allowed_origins = webauthn_service.get_allowed_origins(request)
+
+    success, msg, cred = webauthn_service.verify_authentication(
+        credential_data=credential,
+        rp_id=rp_id,
+        allowed_origins=allowed_origins
+    )
+
+    if success and cred:
+        sess = auth_service.create_device_session()
+        device_name = cred.get("device_name", "Biometric Device")
+        database.add_audit_log("AUTH_BIOMETRIC", f"Biometric unlock successful using '{device_name}'.")
+        resp = make_response(jsonify({
+            "success": True,
+            "message": "Biometric verification successful.",
+            "redirect": "/"
+        }))
+        resp.set_cookie(config.SESSION_COOKIE_NAME, sess, max_age=86400*30, httponly=True, samesite=config.SESSION_COOKIE_SAMESITE)
+        return resp
+    else:
+        database.add_audit_log("LOGIN_FAILED", f"Failed biometric authentication: {msg}")
+        return jsonify({"success": False, "error": msg}), 401
+
+@app.route("/api/auth/webauthn/credentials", methods=["GET"])
+def webauthn_list_credentials_api():
+    is_valid, _ = check_auth(request)
+    if not is_valid:
+        return jsonify({"error": "Authentication required."}), 401
+    creds = database.list_webauthn_credentials()
+    return jsonify({"success": True, "credentials": creds})
+
+@app.route("/api/auth/webauthn/credentials/<credential_id>", methods=["DELETE"])
+def webauthn_delete_credential_api(credential_id: str):
+    is_valid, _ = check_auth(request)
+    if not is_valid:
+        return jsonify({"error": "Authentication required."}), 401
+
+    data = request.get_json(silent=True) or {}
+    password = data.get("password", "")
+
+    if auth_service.is_password_configured():
+        if not password or not auth_service.authenticate_master_password(password):
+            return jsonify({"error": "Incorrect master password. Biometric device was NOT deleted."}), 403
+
+    cred = database.get_webauthn_credential_by_id(credential_id)
+    device_name = cred.get("device_name", "Biometric Device") if cred else credential_id
+
+    success = database.delete_webauthn_credential(credential_id)
+    if success:
+        database.add_audit_log("WEBAUTHN_DELETED", f"Removed biometric device / passkey: '{device_name}'.")
+        return jsonify({"success": True, "message": f"Biometric passkey '{device_name}' removed."})
+    return jsonify({"error": "Credential not found."}), 404
 
 # --- Profile APIs ---
 @app.route("/api/profile", methods=["GET"])

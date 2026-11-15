@@ -138,6 +138,32 @@ def init_db():
         """)
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_audit_occurred ON audit_logs (occurred_at DESC);")
 
+        # 7. WebAuthn Biometric & Passkey Credentials
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS webauthn_credentials (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                device_user_id TEXT NOT NULL DEFAULT 'family-shared-device',
+                credential_id TEXT UNIQUE NOT NULL,
+                public_key BLOB NOT NULL,
+                sign_count INTEGER NOT NULL DEFAULT 0,
+                transports TEXT NOT NULL DEFAULT '',
+                device_name TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                last_used_at TEXT
+            );
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_webauthn_user ON webauthn_credentials (device_user_id);")
+
+        # 8. WebAuthn Transient Challenges
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS webauthn_challenges (
+                challenge TEXT PRIMARY KEY,
+                challenge_type TEXT NOT NULL,
+                device_user_id TEXT NOT NULL DEFAULT 'family-shared-device',
+                created_at INTEGER NOT NULL
+            );
+        """)
+
         # Seed default profile if none exists
         cursor.execute("SELECT device_id FROM profiles LIMIT 1;")
         if not cursor.fetchone():
@@ -314,6 +340,8 @@ def reset_main_account(
         """, (display_name, password_hash, password_salt, recovery_key_hash, recovery_key_salt, now_str))
         # Clear old sessions so new credentials take effect cleanly
         cursor.execute("DELETE FROM sessions;")
+        cursor.execute("DELETE FROM webauthn_credentials WHERE device_user_id = 'family-shared-device';")
+        cursor.execute("DELETE FROM webauthn_challenges WHERE device_user_id = 'family-shared-device';")
         conn.commit()
 
 # Log Entries methods
@@ -531,6 +559,8 @@ def factory_reset_all_data_and_accounts(device_id: str = "family-shared-device")
         cursor.execute("DELETE FROM log_entries WHERE device_id = ?;", (device_id,))
         cursor.execute("DELETE FROM reminders WHERE device_id = ?;", (device_id,))
         cursor.execute("DELETE FROM sessions WHERE device_id = ?;", (device_id,))
+        cursor.execute("DELETE FROM webauthn_credentials WHERE device_user_id = ?;", (device_id,))
+        cursor.execute("DELETE FROM webauthn_challenges WHERE device_user_id = ?;", (device_id,))
         cursor.execute("""
             UPDATE device_users 
             SET display_name = 'Main Account',
@@ -575,3 +605,113 @@ def get_audit_logs(limit: int = 100) -> List[Dict[str, Any]]:
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM audit_logs ORDER BY occurred_at DESC LIMIT ?;", (limit,))
         return [dict(r) for r in cursor.fetchall()]
+
+# ==========================================
+# WebAuthn Biometric & Passkey Management
+# ==========================================
+def save_webauthn_challenge(challenge: str, challenge_type: str, user_id: str = "family-shared-device"):
+    now = int(time.time())
+    with get_db() as conn:
+        cursor = conn.cursor()
+        # Clean up stale challenges older than 10 minutes
+        cursor.execute("DELETE FROM webauthn_challenges WHERE created_at < ?;", (now - 600,))
+        cursor.execute("""
+            INSERT OR REPLACE INTO webauthn_challenges (challenge, challenge_type, device_user_id, created_at)
+            VALUES (?, ?, ?, ?);
+        """, (challenge, challenge_type, user_id, now))
+        conn.commit()
+
+def consume_webauthn_challenge(challenge: str, challenge_type: str, max_age_seconds: int = 300) -> Optional[Dict[str, Any]]:
+    now = int(time.time())
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT challenge, challenge_type, device_user_id, created_at 
+            FROM webauthn_challenges 
+            WHERE challenge = ? AND challenge_type = ?;
+        """, (challenge, challenge_type))
+        row = cursor.fetchone()
+        if not row:
+            return None
+        c_dict = dict(row)
+        # Delete consumed challenge (one-time use)
+        cursor.execute("DELETE FROM webauthn_challenges WHERE challenge = ?;", (challenge,))
+        conn.commit()
+
+        if (now - c_dict.get("created_at", 0)) > max_age_seconds:
+            return None  # Expired
+        return c_dict
+
+def save_webauthn_credential(
+    user_id: str,
+    credential_id: str,
+    public_key: bytes,
+    sign_count: int,
+    transports: str,
+    device_name: str
+) -> Dict[str, Any]:
+    now_str = datetime.now(timezone.utc).isoformat()
+    clean_name = (device_name or "Biometric Device").strip()[:80]
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT OR REPLACE INTO webauthn_credentials (
+                device_user_id, credential_id, public_key, sign_count, transports, device_name, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?);
+        """, (user_id, credential_id, public_key, sign_count, transports, clean_name, now_str))
+        conn.commit()
+    return get_webauthn_credential_by_id(credential_id)
+
+def get_webauthn_credential_by_id(credential_id: str) -> Optional[Dict[str, Any]]:
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM webauthn_credentials WHERE credential_id = ?;", (credential_id,))
+        row = cursor.fetchone()
+        return dict(row) if row else None
+
+def list_webauthn_credentials(user_id: str = "family-shared-device") -> List[Dict[str, Any]]:
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT id, device_user_id, credential_id, sign_count, transports, device_name, created_at, last_used_at 
+            FROM webauthn_credentials 
+            WHERE device_user_id = ? 
+            ORDER BY created_at DESC;
+        """, (user_id,))
+        return [dict(r) for r in cursor.fetchall()]
+
+def count_webauthn_credentials(user_id: str = "family-shared-device") -> int:
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM webauthn_credentials WHERE device_user_id = ?;", (user_id,))
+        row = cursor.fetchone()
+        return row[0] if row else 0
+
+def update_webauthn_credential_usage(credential_id: str, new_sign_count: int):
+    now_str = datetime.now(timezone.utc).isoformat()
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            UPDATE webauthn_credentials 
+            SET sign_count = ?, last_used_at = ?
+            WHERE credential_id = ?;
+        """, (new_sign_count, now_str, credential_id))
+        conn.commit()
+
+def delete_webauthn_credential(credential_id: str, user_id: str = "family-shared-device") -> bool:
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            DELETE FROM webauthn_credentials 
+            WHERE credential_id = ? AND device_user_id = ?;
+        """, (credential_id, user_id))
+        deleted = cursor.rowcount > 0
+        conn.commit()
+        return deleted
+
+def delete_all_webauthn_credentials(user_id: str = "family-shared-device"):
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM webauthn_credentials WHERE device_user_id = ?;", (user_id,))
+        cursor.execute("DELETE FROM webauthn_challenges WHERE device_user_id = ?;", (user_id,))
+        conn.commit()

@@ -99,6 +99,9 @@ To access GlycoGuide from your smartphone anywhere in the world:
 * **Rule of 15 Hypo Rescue**: Auto-triggered full-screen rescue protocol with persistent 15-minute countdown timer, audio alerts, fast-carb guide, and recovery BG verification.
 * **Time In Range (TIR) & Estimated HbA1c (ADAG)**: Interpolated TIR stats, ADAG eA1c in `%` & `mmol/mol`, glycemic variability ($CV\%$), and ratio adjustment insights.
 * **Full-Page Security & Audit Logs**: Master password gatekeeping, auto-lock after 15 minutes of inactivity, activity audit trail, and safe auto-update checks every hour.
+* **Biometric Sign-In & Passkeys (WebAuthn / FIDO2)**:
+  * Unlock with your physical device's built-in biometrics (such as **Touch ID**, **Face ID**, **Windows Hello**, or **Android Fingerprint**) with 1 click.
+  * Manage and remove enrolled biometric devices securely in *Settings → Themes & Maintenance*.
 * **Data Backup & Restore Hub**:
   * **Host Server Backups**: Save timestamped SQLite database backups directly on the server machine (e.g. Raspberry Pi or local PC) with 1 click.
   * **Client Device Download**: Download an instant hot `.db` snapshot straight to your phone, tablet, or PC browser downloads.
